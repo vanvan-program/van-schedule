@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        (application as VanApplication).band.onChanged()
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 Scheduler.reconcile(this@MainActivity)

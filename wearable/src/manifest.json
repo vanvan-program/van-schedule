@@ -1,0 +1,45 @@
+{
+  "package": "app.van.timetable",
+  "name": "van手环",
+  "versionName": "0.3.0",
+  "versionCode": 9,
+  "minPlatformVersion": 1200,
+  "minAPILevel": 1,
+  "icon": "/common/logo.png",
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.app"
+    },
+    {
+      "name": "system.router"
+    },
+    {
+      "name": "system.interconnect"
+    },
+    {
+      "name": "system.storage"
+    },
+    {
+      "name": "system.file"
+    }
+  ],
+  "config": {
+    "logLevel": "error",
+    "designWidth": 336
+  },
+  "router": {
+    "entry": "pages/index",
+    "pages": {
+      "pages/index": {
+        "component": "index"
+      }
+    }
+  },
+  "display": {
+    "titleBar": false,
+    "backgroundColor": "#000000"
+  }
+}

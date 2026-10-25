@@ -371,6 +371,7 @@ fun VanApp(
                             } ?: Missing(::nav)
                         route == "appearance" -> Appearance(state.preferences, vm, state.active)
                         route == "notifications" -> NotificationSettings(state.preferences, vm)
+                        route == "band" -> BandScreen(state)
                         route == "widgets" -> WidgetGallery(state, vm)
                         route == "backup" ->
                             Column(
@@ -452,6 +453,7 @@ private fun title(route: String) =
         "adjust" -> "单次调课"
         "appearance" -> "外观设置"
         "notifications" -> "提醒与手环"
+        "band" -> "手环课表"
         "widgets" -> "桌面小组件"
         "backup" -> "备份与恢复"
         "share" -> "分享课表"

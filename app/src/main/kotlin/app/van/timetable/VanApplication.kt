@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.*
 class VanApplication : Application() {
     val store by lazy { Store(this) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val band by lazy { app.van.timetable.band.BandSync(this) }
 
     @OptIn(FlowPreview::class)
     override fun onCreate() {
@@ -23,6 +24,7 @@ class VanApplication : Application() {
                 .collect {
                     try {
                         Scheduler.reconcile(this@VanApplication)
+                        band.onChanged()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

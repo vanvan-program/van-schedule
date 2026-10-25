@@ -1,0 +1,3 @@
+<script>
+export default { onCreate() {}, onDestroy() {} }
+</script>

@@ -2,6 +2,7 @@
 .tools/
 .verification/
 deliverables/
+archive/
 .kotlin/
 **/build/
 local.properties
@@ -40,3 +41,6 @@ credentials.json
 samples/private/
 private-samples/
 **/src/androidTest/assets/sample-*.pdf
+
+# Obtain the vendor SDK from its official example; see app/libs/README.md
+app/libs/xms-wearable-lib_1.4_release.aar

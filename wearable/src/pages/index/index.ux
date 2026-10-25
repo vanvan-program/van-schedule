@@ -1,0 +1,115 @@
+<template>
+  <div class="page" onswipe="swipe">
+    <div class="tabs">
+      <text class="back" onclick="back">‹ 返回</text>
+      <text if="{{ !detail }}" class="tab {{ offset === 0 ? 'selected' : '' }}" onclick="today">今天</text>
+      <text if="{{ !detail }}" class="tab {{ offset === 1 ? 'selected' : '' }}" onclick="tomorrow">明天</text>
+    </div>
+    <text class="date" if="{{ !detail }}">{{ dateTitle }}</text>
+    <text class="connection-status" if="{{ !detail }}">{{ statusText }}</text>
+    <list class="list" if="{{ !detail }}">
+      <list-item type="message" if="{{ message }}" class="message-item"><text class="message">{{ message }}</text></list-item>
+      <list-item type="lesson" for="{{ lessons }}" class="lesson" onclick="open($item.id)">
+        <div class="color" style="background-color: {{ $item.color }};"></div>
+        <div class="content">
+          <text class="name">{{ $item.name }}</text>
+          <text class="ongoing">{{ $item.ongoing ? '正在上课' : '' }}</text>
+          <text class="time">{{ $item.start }}–{{ $item.end }}</text>
+          <text class="place">{{ $item.place || '地点待定' }}</text>
+        </div>
+      </list-item>
+      <list-item type="special" for="{{ special }}" class="special"><text class="hint">本周事项／时间未定：{{ $item }}</text></list-item>
+      <list-item type="footer" class="footer">
+        <text class="hint">{{ lastSync }}</text><text class="hint">{{ statusText }}</text>
+        <text class="sync" onclick="sync">同步手机</text>
+      </list-item>
+    </list>
+    <list class="details" if="{{ detail }}">
+      <list-item type="details" class="detail-content">
+        <text class="sync" onclick="close">‹ 返回课程</text>
+        <text class="detail-name">{{ detail.name }}</text>
+        <text class="time">{{ detail.start }}–{{ detail.end }}</text>
+        <text class="detail-line">{{ detail.sections }}</text>
+        <text class="detail-line">教室：{{ detail.place || '地点待定' }}</text>
+        <text class="detail-line">教师：{{ detail.teacher || '未填写' }}</text>
+        <text class="ongoing" if="{{ detail.adjusted }}">已调课／单次课程</text>
+      </list-item>
+    </list>
+  </div>
+</template>
+<script>
+import runtime from '../../common/runtime'
+import { view } from '../../common/protocol'
+import app from '@system.app'
+let saved = null, ticker = null, frame = ''
+export default {
+  private: { offset: 0, dateTitle: 'van手环', message: '正在读取本地课程…', lessons: [], special: [],
+    detail: null, lastSync: '尚未同步', statusText: '' },
+  onInit() { this.onRuntime = (snapshot, info, connected) => {
+    saved = snapshot; frame = ''; this.statusText = (connected ? '手机已连接 · ' : '') + info; this.refresh()
+  } },
+  onShow() {
+    runtime.start(this.onRuntime); this.refresh()
+    if (ticker) clearInterval(ticker)
+    ticker = setInterval(() => this.refresh(), 1000)
+  },
+  onHide() { if (ticker) clearInterval(ticker); ticker = null; runtime.stop() },
+  onDestroy() { if (ticker) clearInterval(ticker); ticker = null; runtime.stop() },
+  refresh() {
+    const now = Date.now()
+    // Re-render only when day/selection/course state changes; preserve list scroll between ticks.
+    const token = this.offset + '/' + (saved ? saved.generatedAt : 0) + '/' +
+      (saved ? saved.days.map(day => (now >= day.startsAt ? 1 : 0) + ':' + day.lessons.map(item =>
+        now >= item.endsAt ? 'e' : now >= item.startsAt ? 's' : 'n').join('')).join('/') : '')
+    if (token === frame) return
+    frame = token
+    const state = view(saved, now, this.offset)
+    this.dateTitle = state.title || 'van手环'; this.message = state.message
+    this.lessons = state.lessons; this.special = state.special
+    this.lastSync = saved && !saved.cleared ? '同步 ' + (saved.syncedLabel || '') + ' · 缓存至 ' + saved.through.slice(5) : '尚未同步'
+    if (this.detail && !state.lessons.some(item => item.id === this.detail.id)) this.detail = null
+  },
+  today() { this.offset = 0; this.refresh() },
+  tomorrow() { this.offset = 1; this.refresh() },
+  onBackPress() { this.back(); return true },
+  back() {
+    if (this.detail) this.close()
+    else if (this.offset === 1) this.today()
+    else app.terminate()
+  },
+  swipe(event) {
+    if (event.direction === 'right') this.back()
+    else if (!this.detail && event.direction === 'left') this.tomorrow()
+  },
+  open(id) { this.detail = this.lessons.find(item => item.id === id) || null },
+  close() { this.detail = null },
+  sync() { runtime.request() }
+}
+</script>
+<style>
+.page { width: 336px; height: 480px; flex-direction: column; background-color: #000000; padding: 24px 18px 8px; }
+.tabs { height: 48px; justify-content: space-between; }
+.back { width: 76px; height: 44px; text-align: center; font-size: 21px; color: #8fbbff; }
+.tab { width: 102px; height: 44px; text-align: center; font-size: 24px; color: #999fa9; background-color: #16191f; border-radius: 16px; }
+.selected { color: #ffffff; background-color: #265fd4; }
+.date { color: #b9c3d5; font-size: 20px; height: 38px; text-align: center; }
+.connection-status { color: #8fbbff; font-size: 18px; height: 54px; max-lines: 2; text-overflow: ellipsis; }
+.list { width: 300px; height: 308px; }
+.lesson { width: 300px; height: 186px; margin-bottom: 10px; padding: 12px; border-radius: 16px; background-color: #171c25; }
+.color { width: 5px; height: 162px; border-radius: 3px; margin-right: 12px; }
+.content { flex: 1; height: 162px; flex-direction: column; }
+.name { height: 58px; color: #ffffff; font-size: 25px; max-lines: 2; text-overflow: ellipsis; }
+.time { height: 30px; color: #d3ddf0; font-size: 22px; margin-top: 5px; }
+.place { height: 28px; color: #aab8cf; font-size: 20px; margin-top: 4px; max-lines: 1; text-overflow: ellipsis; }
+.ongoing { height: 24px; color: #7acda9; font-size: 19px; margin-top: 5px; }
+.message-item { width: 300px; height: 148px; padding: 26px 12px; }
+.message { height: 88px; color: #e9edf6; font-size: 25px; max-lines: 3; text-overflow: ellipsis; }
+.special { width: 300px; height: 110px; padding: 12px 4px; }
+.hint { color: #8f9bb0; font-size: 18px; margin-top: 4px; }
+.footer { width: 300px; height: 220px; flex-direction: column; align-items: center; padding: 10px 4px 24px; }
+.sync { color: #8fbbff; font-size: 23px; padding: 12px; }
+.details { width: 300px; height: 400px; }
+.detail-content { width: 300px; height: 600px; flex-direction: column; }
+.detail-name { height: 100px; color: #ffffff; font-size: 29px; margin-top: 15px; max-lines: 3; text-overflow: ellipsis; }
+.detail-line { height: 70px; color: #b9c3d5; font-size: 23px; margin-top: 14px; max-lines: 3; text-overflow: ellipsis; }
+</style>
