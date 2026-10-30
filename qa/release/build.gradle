@@ -1,0 +1,41 @@
+plugins {
+    id 'com.android.application'
+}
+
+// A self-contained black-box runner. It deliberately has no dependency on :app:
+// debug androidTest APKs omit runtime classes supplied by the unminified app,
+// so they cannot reliably test the exact R8 distribution APK.
+evaluationDependsOn(':app')
+android {
+    namespace 'app.van.timetable.releaseqa'
+    compileSdk 37
+    defaultConfig {
+        applicationId 'app.van.timetable.releaseqa'
+        minSdk 26
+        targetSdk 37
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    def original = project(':app').android.signingConfigs.findByName('original')
+    if (original != null) {
+        signingConfigs {
+            matchingApp {
+                storeFile original.storeFile
+                storePassword original.storePassword
+                keyAlias original.keyAlias
+                keyPassword original.keyPassword
+            }
+        }
+        buildTypes.debug.signingConfig signingConfigs.matchingApp
+    }
+}
+
+dependencies {
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.10'
+    implementation 'junit:junit:4.13.2'
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.test:runner:1.7.0'
+    implementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+}

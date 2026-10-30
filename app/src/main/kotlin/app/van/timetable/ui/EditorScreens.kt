@@ -55,7 +55,10 @@ fun Detail(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         val cardColor = LocalVan.current.courseColor(c)
-        Surface(color = cardColor, shape = RoundedCornerShape(24.dp)) {
+        Surface(
+            modifier = Modifier.detailEntrance(),
+            color = cardColor, shape = RoundedCornerShape(24.dp),
+        ) {
             Column(Modifier.fillMaxWidth().padding(24.dp)) {
                 Text(
                     c.name,

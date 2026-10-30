@@ -30,8 +30,8 @@ android {
         applicationId 'app.van.timetable'
         minSdk 26
         targetSdk 37
-        versionCode 30
-        versionName '0.3.0'
+        versionCode 31
+        versionName '0.3.1'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildFeatures { compose true }
@@ -52,9 +52,21 @@ android {
     buildTypes {
         debug { if (originalSigningFile.exists()) signingConfig signingConfigs.original }
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Phone delivery defaults to arm64. Debug retains emulator/older-device support.
+            // Example: -PvanReleaseAbis=armeabi-v7a,arm64-v8a,x86,x86_64
+            ndk {
+                abiFilters.addAll(providers.gradleProperty('vanReleaseAbis')
+                    .getOrElse('arm64-v8a').split(',').collect { it.trim() })
+            }
             if (originalSigningFile.exists()) signingConfig signingConfigs.original
         }
+    }
+    packaging {
+        // Compress DEX in the download; Android extracts/optimizes it at installation.
+        dex { useLegacyPackaging true }
     }
 }
 

@@ -7,9 +7,11 @@ import android.content.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.*
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -22,7 +24,6 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -202,212 +203,201 @@ fun VanApp(
                     color =
                         if (c.dark) c.surface else androidx.compose.ui.graphics.Color(0xFF243249),
                 ) {
-                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                        listOf(
-                                "课表" to Icons.Outlined.CalendarMonth,
-                                "课程" to Icons.Outlined.MenuBook,
-                                "我的" to Icons.Outlined.PersonOutline,
-                            )
-                            .forEachIndexed { i, (label, icon) ->
-                                val tint =
-                                    if (tab == i) androidx.compose.ui.graphics.Color.White
-                                    else androidx.compose.ui.graphics.Color(0xFFB2BED1)
-                                Column(
-                                    Modifier.weight(1f)
-                                        .heightIn(min = 56.dp)
-                                        .selectable(
-                                            selected = tab == i,
-                                            role = Role.Tab,
-                                            onClick = { tab = i },
-                                        )
-                                        .padding(vertical = 5.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                ) {
-                                    Box(
-                                        Modifier.background(
-                                                if (tab == i)
-                                                    androidx.compose.ui.graphics.Color(0xFF3874F6)
-                                                else androidx.compose.ui.graphics.Color.Transparent,
-                                                RoundedCornerShape(14.dp),
-                                            )
-                                            .padding(horizontal = 15.dp, vertical = 2.dp)
-                                    ) {
-                                        Icon(icon, null, Modifier.size(20.dp), tint = tint)
-                                    }
-                                    Text(label, color = tint, fontSize = 11.sp, lineHeight = 14.sp)
-                                }
-                            }
-                    }
+                    VanTabBar(tab) { tab = it }
                 }
         },
     ) { insets ->
         Box(Modifier.padding(insets).fillMaxSize()) {
             if (!state.ready) CircularProgressIndicator(Modifier.align(Alignment.Center))
             else {
-                val active = displayed
-                val importStateKey =
-                    when (route) {
-                        "document" -> document?.id.orEmpty()
-                        "preview" -> imported?.schedules?.firstOrNull()?.id.orEmpty()
-                        else -> ""
-                    }
-                screenStates.SaveableStateProvider(
-                    "$route:$tab:${active?.id.orEmpty()}:$importStateKey"
-                ) {
-                    when {
-                        route == "main" ->
-                            when (tab) {
-                                0 ->
-                                    if (active != null)
-                                        key(
-                                            active.week1Monday,
-                                            active.maxWeeks,
-                                            if (openTimetable) launchSequence else -1,
-                                        ) {
-                                            Timetable(
-                                                active,
-                                                state.preferences,
-                                                now,
-                                                ::nav,
-                                                if (openTimetable) initialDate else null,
-                                            )
+                val importKey = when (route) {
+                    "document" -> document?.id.orEmpty()
+                    "preview" -> imported?.schedules?.firstOrNull()?.id.orEmpty()
+                    else -> ""
+                }
+                val destination = VanDestination(route, tab, displayed?.id, importKey, stack.size)
+                AnimatedContent(
+                    targetState = destination,
+                    contentKey = { it.key },
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        val detail = initialState.route.startsWith("detail:") || targetState.route.startsWith("detail:")
+                        val direction = if (targetState.route == initialState.route) {
+                            if (targetState.tab > initialState.tab) 1 else -1
+                        } else if (targetState.depth >= initialState.depth) 1 else -1
+                        val motion = if (detail) {
+                            fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                        } else {
+                            (fadeIn(tween(180)) + slideInHorizontally(
+                                tween(260, easing = FastOutSlowInEasing),
+                                initialOffsetX = { direction * minOf(it / 12, 64) },
+                            )) togetherWith (fadeOut(tween(120)) + slideOutHorizontally(
+                                tween(260, easing = FastOutSlowInEasing),
+                                targetOffsetX = { -direction * minOf(it / 16, 48) },
+                            ))
+                        }
+                        motion.using(null)
+                    },
+                    label = "screen-navigation",
+                ) { screen ->
+                    val active = state.schedules.firstOrNull { it.id == screen.scheduleId }
+                    CompositionLocalProvider(LocalDetailVisibility provides this) {
+                        screenStates.SaveableStateProvider(screen.key) {
+                            when {
+                                screen.route == "main" ->
+                                    when (screen.tab) {
+                                        0 ->
+                                            if (active != null)
+                                                key(
+                                                    active.week1Monday,
+                                                    active.maxWeeks,
+                                                    if (openTimetable) launchSequence else -1,
+                                                ) {
+                                                    Timetable(
+                                                        active,
+                                                        state.preferences,
+                                                        now,
+                                                        ::nav,
+                                                        if (openTimetable) initialDate else null,
+                                                    )
+                                                }
+                                            else if (state.schedules.isEmpty()) Welcome(vm, ::nav)
+                                            else
+                                                Column(Modifier.padding(24.dp)) {
+                                                    Text(
+                                                        "尚未启用课表",
+                                                        style = MaterialTheme.typography.headlineMedium,
+                                                    )
+                                                    Action("选择启用课表", "已有 ${state.schedules.size} 份课表") {
+                                                        nav("schedules")
+                                                    }
+                                                }
+                                        1 ->
+                                            if (active != null) Courses(active, now, ::nav)
+                                            else
+                                                Column(Modifier.padding(24.dp)) {
+                                                    Action("先选择启用课表") { nav("schedules") }
+                                                }
+                                        else -> Mine(state, ::nav)
+                                    }
+                                screen.route == "notes" -> active?.let { CourseNotesScreen(it, vm) } ?: Missing(::nav)
+                                screen.route == "import" -> ImportEntry({ pick.launch(arrayOf("*/*")) }, ::nav)
+                                screen.route == "document" ->
+                                    document?.let { DocumentReview(vm, it) { nav("preview") } }
+                                        ?: Missing(::nav)
+                                screen.route == "preview" ->
+                                    if (imported != null)
+                                        ImportPreview(vm, imported!!, warnings, ::back) {
+                                            vm.documentSource.value = null
+                                            vm.documentDrafts.clear()
+                                            stack.clear()
+                                            route = "schedules"
                                         }
-                                    else if (state.schedules.isEmpty()) Welcome(vm, ::nav)
                                     else
                                         Column(Modifier.padding(24.dp)) {
-                                            Text(
-                                                "尚未启用课表",
-                                                style = MaterialTheme.typography.headlineMedium,
+                                            Text("导入草稿已清除")
+                                            TextButton(onClick = ::back) { Text("返回") }
+                                        }
+                                screen.route == "school" ->
+                                    SchoolEntry(
+                                        state.preferences,
+                                        vm,
+                                        { url ->
+                                            schoolLauncher.launch(
+                                                Intent(context, SchoolActivity::class.java)
+                                                    .putExtra("url", url)
                                             )
-                                            Action("选择启用课表", "已有 ${state.schedules.size} 份课表") {
-                                                nav("schedules")
+                                        },
+                                        { pick.launch(arrayOf("*/*")) },
+                                    )
+                                screen.route == "schedules" -> ScheduleList(state, vm, ::nav)
+                                screen.route == "newSchedule" -> ScheduleEditor(null, vm, ::back)
+                                screen.route.startsWith("schedule:") ->
+                                    state.schedules
+                                        .firstOrNull { it.id == screen.route.substringAfter(':') }
+                                        ?.let { ScheduleEditor(it, vm, ::back) }
+                                screen.route == "semester" ->
+                                    active?.let { ScheduleEditor(it, vm, ::back) } ?: Missing(::nav)
+                                screen.route == "routines" ->
+                                    active?.let { Routines(it) { s -> vm.save(s) } } ?: Missing(::nav)
+                                screen.route == "days" -> active?.let { DayAdjustments(it, vm) } ?: Missing(::nav)
+                                screen.route == "holidays" ->
+                                    active?.let { HolidayScreen(it, vm) } ?: Missing(::nav)
+                                screen.route.startsWith("detail:") ->
+                                    active?.let { s ->
+                                        val parts = screen.route.split(':')
+                                        s.courses
+                                            .firstOrNull { it.id == parts[1] }
+                                            ?.let { Detail(s, it, parts.getOrNull(2), vm, ::nav, ::back, parts.getOrNull(3), parts.getOrNull(4)) }
+                                            ?: Missing(::nav)
+                                    } ?: Missing(::nav)
+                                screen.route.startsWith("edit:") ->
+                                    active?.let { s ->
+                                        val id = screen.route.split(':')[1]
+                                        CourseEditor(s, s.courses.firstOrNull { it.id == id }, vm, ::back)
+                                    } ?: Missing(::nav)
+                                screen.route.startsWith("quick:") ->
+                                    active?.let { s ->
+                                        val parts = screen.route.split(':')
+                                        s.courses
+                                            .firstOrNull { it.id == parts[1] }
+                                            ?.let { parent ->
+                                                CourseEditor(
+                                                    s,
+                                                    null,
+                                                    vm,
+                                                    ::back,
+                                                    parent,
+                                                    if (parts[2] == "exam") "期末考试" else "实验课",
+                                                )
+                                            } ?: Missing(::nav)
+                                    } ?: Missing(::nav)
+                                screen.route.startsWith("adjust:") ->
+                                    active?.let { s ->
+                                        val parts = screen.route.split(':')
+                                        SingleAdjustment(s, parts[1], parts[2], vm, ::back)
+                                    } ?: Missing(::nav)
+                                screen.route == "appearance" -> Appearance(state.preferences, vm, state.active)
+                                screen.route == "notifications" -> NotificationSettings(state.preferences, vm)
+                                screen.route == "band" -> BandScreen(state)
+                                screen.route == "widgets" -> WidgetGallery(state, vm)
+                                screen.route == "backup" ->
+                                    Column(
+                                        Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        Action("导出完整备份", "包含全部课表、作息、调课和设置") {
+                                            if (state.schedules.isNotEmpty())
+                                                export.launch("van课表-${LocalDate.now()}.van.json")
+                                            else message = "还没有课表可备份"
+                                        }
+                                        Action("从文件恢复或导入", "先预览，再确认是否覆盖") { pick.launch(arrayOf("*/*")) }
+                                        Action("恢复上一次覆盖前快照", "替换前自动保存在本机") {
+                                            vm.work {
+                                                val text =
+                                                    context
+                                                        .openFileInput("before-restore.van.json")
+                                                        .bufferedReader()
+                                                        .use { it.readText() }
+                                                vm.importData.value = Codec.restore(text)
+                                                vm.importWarnings.value = listOf("这是上一次完整恢复前的本机快照")
+                                                withContext(Dispatchers.Main) { nav("preview") }
                                             }
                                         }
-                                1 ->
-                                    if (active != null) Courses(active, now, ::nav)
-                                    else
-                                        Column(Modifier.padding(24.dp)) {
-                                            Action("先选择启用课表") { nav("schedules") }
+                                        active?.let { s ->
+                                            Action("分享当前课表", s.name) { nav("share:${s.id}") }
                                         }
-                                else -> Mine(state, ::nav)
-                            }
-                        route == "notes" -> active?.let { CourseNotesScreen(it, vm) } ?: Missing(::nav)
-                        route == "import" -> ImportEntry({ pick.launch(arrayOf("*/*")) }, ::nav)
-                        route == "document" ->
-                            document?.let { DocumentReview(vm, it) { nav("preview") } }
-                                ?: Missing(::nav)
-                        route == "preview" ->
-                            if (imported != null)
-                                ImportPreview(vm, imported!!, warnings, ::back) {
-                                    vm.documentSource.value = null
-                                    vm.documentDrafts.clear()
-                                    stack.clear()
-                                    route = "schedules"
-                                }
-                            else
-                                Column(Modifier.padding(24.dp)) {
-                                    Text("导入草稿已清除")
-                                    TextButton(onClick = ::back) { Text("返回") }
-                                }
-                        route == "school" ->
-                            SchoolEntry(
-                                state.preferences,
-                                vm,
-                                { url ->
-                                    schoolLauncher.launch(
-                                        Intent(context, SchoolActivity::class.java)
-                                            .putExtra("url", url)
-                                    )
-                                },
-                                { pick.launch(arrayOf("*/*")) },
-                            )
-                        route == "schedules" -> ScheduleList(state, vm, ::nav)
-                        route == "newSchedule" -> ScheduleEditor(null, vm, ::back)
-                        route.startsWith("schedule:") ->
-                            state.schedules
-                                .firstOrNull { it.id == route.substringAfter(':') }
-                                ?.let { ScheduleEditor(it, vm, ::back) }
-                        route == "semester" ->
-                            active?.let { ScheduleEditor(it, vm, ::back) } ?: Missing(::nav)
-                        route == "routines" ->
-                            active?.let { Routines(it) { s -> vm.save(s) } } ?: Missing(::nav)
-                        route == "days" -> active?.let { DayAdjustments(it, vm) } ?: Missing(::nav)
-                        route == "holidays" ->
-                            active?.let { HolidayScreen(it, vm) } ?: Missing(::nav)
-                        route.startsWith("detail:") ->
-                            active?.let { s ->
-                                val parts = route.split(':')
-                                s.courses
-                                    .firstOrNull { it.id == parts[1] }
-                                    ?.let { Detail(s, it, parts.getOrNull(2), vm, ::nav, ::back, parts.getOrNull(3), parts.getOrNull(4)) }
-                                    ?: Missing(::nav)
-                            } ?: Missing(::nav)
-                        route.startsWith("edit:") ->
-                            active?.let { s ->
-                                val id = route.split(':')[1]
-                                CourseEditor(s, s.courses.firstOrNull { it.id == id }, vm, ::back)
-                            } ?: Missing(::nav)
-                        route.startsWith("quick:") ->
-                            active?.let { s ->
-                                val parts = route.split(':')
-                                s.courses
-                                    .firstOrNull { it.id == parts[1] }
-                                    ?.let { parent ->
-                                        CourseEditor(
-                                            s,
-                                            null,
-                                            vm,
-                                            ::back,
-                                            parent,
-                                            if (parts[2] == "exam") "期末考试" else "实验课",
-                                        )
-                                    } ?: Missing(::nav)
-                            } ?: Missing(::nav)
-                        route.startsWith("adjust:") ->
-                            active?.let { s ->
-                                val parts = route.split(':')
-                                SingleAdjustment(s, parts[1], parts[2], vm, ::back)
-                            } ?: Missing(::nav)
-                        route == "appearance" -> Appearance(state.preferences, vm, state.active)
-                        route == "notifications" -> NotificationSettings(state.preferences, vm)
-                        route == "band" -> BandScreen(state)
-                        route == "widgets" -> WidgetGallery(state, vm)
-                        route == "backup" ->
-                            Column(
-                                Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Action("导出完整备份", "包含全部课表、作息、调课和设置") {
-                                    if (state.schedules.isNotEmpty())
-                                        export.launch("van课表-${LocalDate.now()}.van.json")
-                                    else message = "还没有课表可备份"
-                                }
-                                Action("从文件恢复或导入", "先预览，再确认是否覆盖") { pick.launch(arrayOf("*/*")) }
-                                Action("恢复上一次覆盖前快照", "替换前自动保存在本机") {
-                                    vm.work {
-                                        val text =
-                                            context
-                                                .openFileInput("before-restore.van.json")
-                                                .bufferedReader()
-                                                .use { it.readText() }
-                                        vm.importData.value = Codec.restore(text)
-                                        vm.importWarnings.value = listOf("这是上一次完整恢复前的本机快照")
-                                        withContext(Dispatchers.Main) { nav("preview") }
+                                        Muted("备份文件不含教务登录Cookie、密码和系统授权。当前不提供自动云同步。")
                                     }
-                                }
-                                active?.let { s ->
-                                    Action("分享当前课表", s.name) { nav("share:${s.id}") }
-                                }
-                                Muted("备份文件不含教务登录Cookie、密码和系统授权。当前不提供自动云同步。")
+                                screen.route.startsWith("share:") ->
+                                    state.schedules
+                                        .firstOrNull { it.id == screen.route.substringAfter(':') }
+                                        ?.let { ShareScreen(it, c.dark, vm) } ?: Missing(::nav)
+                                screen.route == "about" -> About(::nav)
+                                screen.route == "changelog" -> ChangelogScreen()
+                                else -> Missing(::nav)
                             }
-                        route.startsWith("share:") ->
-                            state.schedules
-                                .firstOrNull { it.id == route.substringAfter(':') }
-                                ?.let { ShareScreen(it, c.dark, vm) } ?: Missing(::nav)
-                        route == "about" -> About(::nav)
-                        route == "changelog" -> ChangelogScreen()
-                        else -> Missing(::nav)
+                        }
                     }
                 }
             }

@@ -2,6 +2,7 @@
 package app.van.timetable.ui
 
 import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -174,7 +175,10 @@ private fun GridCard(name: String, place: String, color: Color, prefix: String, 
     val nameLines = if (compact) 1 else ((height - placeHeight - 6.dp) / with(density) { (nameSize * 1.15f).toDp() }).toInt().coerceIn(1, 5)
     val textColor = if (inactive) LocalVan.current.inactiveText else courseTextColor(color)
     val corner = if (compact) 3.dp else 6.dp
-    Box(modifier.width(width).height(height).clip(RoundedCornerShape(corner)).background(color).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(modifier.width(width).height(height).coursePressFeedback(interaction)
+        .clip(RoundedCornerShape(corner)).background(color)
+        .clickable(interactionSource = interaction, indication = LocalIndication.current, onClick = onClick), contentAlignment = Alignment.Center) {
         Column(Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = if (compact) 0.dp else 3.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text(prefix + name, color = textColor, fontSize = nameSize, lineHeight = nameSize * 1.15f, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = nameLines, overflow = TextOverflow.Ellipsis)
             if (place.isNotBlank() && !compact) Text(place, color = textColor, fontSize = 9.sp, lineHeight = 10.8.sp, textAlign = TextAlign.Center, maxLines = placeLines, overflow = TextOverflow.Ellipsis)

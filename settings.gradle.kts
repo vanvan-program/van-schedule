@@ -18,3 +18,4 @@ dependencyResolutionManagement {
 rootProject.name = "VanTimetable"
 
 include(":app", ":core:domain", ":core:data")
+include(":qa:release")
