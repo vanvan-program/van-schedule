@@ -526,6 +526,7 @@ private fun WidgetGallery(state: VanState, vm: VanViewModel) {
                 "下一节课" to NextWidget::class.java,
             )
             .forEach { (label, clazz) ->
+                var pinResult by rememberSaveable(label) { mutableStateOf<WidgetPinResult?>(null) }
                 Panel {
                     Text(label, fontWeight = FontWeight.Medium)
                     Text(
@@ -534,16 +535,46 @@ private fun WidgetGallery(state: VanState, vm: VanViewModel) {
                     )
                     Button(
                         onClick = {
-                            val m = AppWidgetManager.getInstance(context)
-                            if (m.isRequestPinAppWidgetSupported)
-                                m.requestPinAppWidget(ComponentName(context, clazz), null, null)
-                            else vm.work { vm.messages.emit("此桌面不支持直接添加，请长按桌面进入小组件列表选择van课表") }
+                            pinResult =
+                                requestWidgetPin(
+                                    isSupported = {
+                                        AppWidgetManager.getInstance(context)
+                                            .isRequestPinAppWidgetSupported
+                                    },
+                                    request = {
+                                        AppWidgetManager.getInstance(context)
+                                            .requestPinAppWidget(
+                                                ComponentName(context, clazz), null, null
+                                            )
+                                    },
+                                )
                         }
                     ) {
                         Text("添加到桌面")
                     }
+                    pinResult?.let { Text(it.message) }
                 }
             }
+        Panel {
+            Text("手动添加", fontWeight = FontWeight.Medium)
+            Text("长按桌面空白处 → 小组件／添加小部件 → 找到 van课表 → 选择所需组件并拖到桌面。不同桌面的入口名称可能不同。")
+            Text("如果列表中没有 van课表，请检查桌面的组件管理或添加权限。")
+            TextButton(
+                onClick = {
+                    try {
+                        context.startActivity(
+                            Intent(Intent.ACTION_MAIN)
+                                .addCategory(Intent.CATEGORY_HOME)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (_: RuntimeException) {
+                        vm.work { vm.messages.emit("无法打开桌面，请按手机的主页键或使用返回桌面手势后手动添加。") }
+                    }
+                }
+            ) {
+                Text("返回桌面手动添加")
+            }
+        }
         OutlinedButton(
             onClick = { vm.work { Widgets.updateAll(context) } },
             modifier = Modifier.fillMaxWidth(),
