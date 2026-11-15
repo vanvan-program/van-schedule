@@ -394,6 +394,7 @@ fun VanApp(
                                         .firstOrNull { it.id == screen.route.substringAfter(':') }
                                         ?.let { ShareScreen(it, c.dark, vm) } ?: Missing(::nav)
                                 screen.route == "about" -> About(::nav)
+                                screen.route == "version" -> VersionScreen(::nav)
                                 screen.route == "changelog" -> ChangelogScreen()
                                 else -> Missing(::nav)
                             }
@@ -448,6 +449,7 @@ private fun title(route: String) =
         "backup" -> "备份与恢复"
         "share" -> "分享课表"
         "about" -> "帮助与关于"
+        "version" -> "关于版本"
         "changelog" -> "历史版本更新"
         else -> "van课表"
     }

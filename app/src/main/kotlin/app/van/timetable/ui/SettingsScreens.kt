@@ -45,6 +45,7 @@ fun Mine(state: VanState, nav: (String) -> Unit) {
                 "band" to "手环课表",
                 "widgets" to "桌面小组件",
                 "backup" to "备份与分享",
+                "version" to "关于版本",
                 "about" to "帮助与关于",
             )
             .forEach { (r, t) -> Action(t) { nav(r) } }
@@ -257,7 +258,7 @@ fun About(nav: (String) -> Unit = {}) {
     ) {
         Panel {
             Text("van课表 $version", style = MaterialTheme.typography.headlineSmall)
-            Text("GPL-3.0-only · 本地开发版")
+            Text("GPL-3.0-only · 版本信息与更新检查")
             Muted("不同教务系统、实际导出文件与国产系统通知仍需要验证。")
         }
         Panel {
@@ -265,7 +266,9 @@ fun About(nav: (String) -> Unit = {}) {
             Text(
                 "课程与设置保存在本机，不收集使用统计。教务登录内容直接进入学校网站，App不读取或保存账号密码。默认导入完成清除登录会话；可主动保留。导出文件包含你选择的课程信息，请自行决定分享对象。备份不包含登录Cookie和系统权限。"
             )
-            Text("使用网络仅为访问学校教务。没有广告、内购、分析SDK或自建服务器。")
+            Text(
+                "网络仅用于访问学校教务，以及你点击“检查更新”时读取GitHub发布页的版本号与更新说明；检查过程不上传课表、账号或设备标识。没有广告、内购、分析SDK或自建服务器。"
+            )
         }
         Panel {
             Text("帮助", fontWeight = FontWeight.Medium)
@@ -274,7 +277,8 @@ fun About(nav: (String) -> Unit = {}) {
             )
             Text("完整恢复会替换全部课表，操作前自动保存本机恢复快照。")
         }
-        Action("历史版本更新", "查看 0.3.1 及以往版本的更新内容") { nav("changelog") }
+        Action("版本与更新", "当前 $version · 检查是否为最新版本") { nav("version") }
+        Action("历史版本更新", "查看 $version 及以往版本的更新内容") { nav("changelog") }
         Action("开源与第三方许可", "查看本地许可声明") {
             context.startActivity(Intent(context, app.van.timetable.LicenseActivity::class.java))
         }
