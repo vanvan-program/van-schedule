@@ -36,6 +36,12 @@ import com.haooz.softglass.shape.ContinuousRoundedRectangle
 import java.time.*
 import kotlinx.coroutines.flow.MutableStateFlow
 
+/** 展开空档时，一小时空档占一行高度的比例（再按时长缩放并封顶）。 */
+private const val ExpandedGapUnits = 0.42f
+
+/** 20 分钟以内的课间只留一条细缝，避免十几个小空档把课表撑长。 */
+private const val ShortGapUnits = 0.05f
+
 internal class GridDragMetrics(
     var viewportPosInRoot: Offset = Offset.Zero,
     var viewportWidthPx: Float = 0f,
@@ -199,13 +205,31 @@ internal fun WeekGrid(
         val cardInsetX = 2.dp
         val cardInsetY = 2.dp
         val headerHeight = maxOf(40.dp, (34f * scale).dp)
-        val gapHeight = if (compactAxis) 0.dp else (24f * scale).dp
-        val gapCount = remember(sections) { GridTimeline.create(sections).bands.count { it.section == null } }
-        val fitted = (maxHeight - headerHeight - 8.dp - gapHeight * gapCount) / sections.size
+        // 空档高度按时长分配：短课间留一条细缝，午休/晚休才占整块。
+        // 以前每个空档都固定 24dp（含凌晨与深夜两端的空档），一屏十几个空档把课程行压得很扁。
+        val gapUnits = if (compactAxis) 0f else ExpandedGapUnits
+        val gapUnitsByMinutes: (Long) -> Float = { minutes ->
+            if (compactAxis) 0f
+            else if (minutes >= 20L) (ExpandedGapUnits * minutes / 60f).coerceIn(0.2f, 0.9f)
+            else ShortGapUnits
+        }
+        val occupied = remember(data) {
+            data.flatMap { day -> day.entries.map { it.occurrence.start to it.occurrence.end } }.distinct()
+        }
+        val timeline = remember(sections, compactAxis, occupied) {
+            GridTimeline.create(
+                sections,
+                gapUnits,
+                gapUnitsByMinutes,
+                occupied,
+                edgeGapUnits = if (compactAxis) 0f else ShortGapUnits,
+            )
+        }
+        val totalUnits = timeline.units.coerceAtLeast(1f)
+        val fitted = (maxHeight - headerHeight - 8.dp) / totalUnits
         val minimumRowHeight = maxOf((36f * scale).dp, labelHeight + 4.dp)
         val preferredRowHeight = maxOf(p.rowHeight.dp, minimumRowHeight)
         val rowHeight = if (p.fitWeek) minOf(preferredRowHeight, maxOf(minimumRowHeight, fitted)) else preferredRowHeight
-        val timeline = remember(sections, gapHeight, rowHeight) { GridTimeline.create(sections, gapHeight / rowHeight) }
         if (activePage && dragMetrics != null) {
             SideEffect {
                 with(density) {
@@ -221,14 +245,14 @@ internal fun WeekGrid(
                 dragMetrics.timeline = timeline
             }
         }
-        val placed = remember(data, timeline, rowHeight, gapHeight) {
+        val placed = remember(data, timeline, rowHeight) {
             data.map { day ->
                 val gaps = day.entries.groupBy { timeline.gapContaining(it.occurrence.start, it.occurrence.end) }
                 day.entries.map { entry ->
                 val o = entry.occurrence
                 val gap = timeline.gapContaining(o.start, o.end)
                 val top = if (gap != null) rowHeight * timeline.position(gap.start) else rowHeight * timeline.position(o.start)
-                val height = if (gap != null) gapHeight else rowHeight * (timeline.position(o.end) - timeline.position(o.start))
+                val height = if (gap != null) rowHeight * gap.units else rowHeight * (timeline.position(o.end) - timeline.position(o.start))
                 val neighbors = if (gap == null) listOf(entry) else gaps.getValue(gap)
                 PlacedEntry(entry, top, height, gap != null || height < 28.dp, neighbors.indexOf(entry), neighbors.size)
             } }
@@ -302,17 +326,21 @@ internal fun WeekGrid(
                             Text(n.end, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, softWrap = false, color = secColor)
                         }
                     }
-                    // 午休 / 晚休：只在「前面有课、后面也有课」的空档里画一条通栏浅色横带
+                    // 午休 / 晚休：只在「前面有课、后面也有课」的长空档里画一条通栏浅色横带。
+                    // 有课程占用这段时间的空档不画，否则横带会被课程卡压住一半。
                     timeline.bands.filter { it.section == null && it.units > 0f }.forEach { band ->
                         val kind = timeline.breakKindOf(band) ?: return@forEach
+                        if (occupied.any { it.first < band.end && it.second > band.start }) return@forEach
                         val bandTop = rowHeight * timeline.position(band.start)
                         val bandHeight = rowHeight * band.units
+                        if (bandHeight < 20.dp) return@forEach
                         // 横带铺满整天的宽度（时间列保持空白），不是只画一个小胶囊
                         Box(
                             Modifier.offset(x = gutter + 1.dp, y = bandTop + 2.dp)
                                 .width(width - gutter - 2.dp)
-                                .height(maxOf(18.dp, bandHeight - 4.dp))
-                                .background(colors.breakBand, ContinuousRoundedRectangle(10.dp)),
+                                .height(bandHeight - 4.dp)
+                                .background(colors.breakBand, ContinuousRoundedRectangle(10.dp))
+                                .testTag("break-band-${band.start}"),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
@@ -324,7 +352,7 @@ internal fun WeekGrid(
                         }
                     }
                     if (p.showCustomTimeLabels) gapLabels.forEach { (band, times) ->
-                        Column(Modifier.offset(y = rowHeight * timeline.position(band.start)).width(gutter - 3.dp).height(gapHeight).testTag("clock-band-${times.first}-${times.second}"), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.Center) {
+                        Column(Modifier.offset(y = rowHeight * timeline.position(band.start)).width(gutter - 3.dp).height(rowHeight * band.units).testTag("clock-band-${times.first}-${times.second}"), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.Center) {
                             Text(times.first.toString(), fontSize = 8.sp, lineHeight = 9.sp, maxLines = 1, softWrap = false, color = colors.muted)
                             Text(times.second.toString(), fontSize = 8.sp, lineHeight = 9.sp, maxLines = 1, softWrap = false, color = colors.muted)
                         }
