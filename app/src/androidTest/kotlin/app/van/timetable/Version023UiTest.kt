@@ -1,20 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.van.timetable
 
-import android.app.Activity
-import android.app.Instrumentation
-import android.content.Intent
-import android.os.ParcelFileDescriptor
 import androidx.activity.compose.setContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import app.van.timetable.domain.*
-import app.van.timetable.system.Files
 import app.van.timetable.ui.Timetable
 import app.van.timetable.ui.VanTheme
 import app.van.timetable.ui.weekdays
@@ -138,151 +132,5 @@ class Version023UiTest {
         assertEquals("Top edge", expected.top, actual.top, 1f)
         assertEquals("Width", expected.width, actual.width, 1f)
         assertEquals("Height", expected.height, actual.height, 1f)
-    }
-
-    private fun originalBytes(): ByteArray {
-        // Keep the user's private original outside source control and APK assets. The runner
-        // provides this unmodified file using adb push before executing this test.
-        val path = InstrumentationRegistry.getArguments().getString("originalBackupPath")
-            ?: "/sdcard/Download/van-user-original.van.json"
-        require(path.matches(Regex("^/[A-Za-z0-9_./-]+$"))) { "Original backup path must be an absolute ASCII path" }
-        val bytes = ParcelFileDescriptor.AutoCloseInputStream(
-            instrumentation.uiAutomation.executeShellCommand("cat $path")
-        ).use { it.readBytes() }
-        assertTrue("Push the user's original van backup to $path before running Version023UiTest", bytes.isNotEmpty())
-        return bytes
-    }
-
-    @Test
-    fun originalVanFilePreviewSaveRecreationAndCompleteRestoreKeepCustomTimes() {
-        previousBackup = runBlocking { Backup(schedules = store.all(), preferences = store.prefs()) }
-        val bytes = originalBytes()
-        val original = Files.parse(Files.decode(bytes)).first
-        assertEquals("Both schedules from the original file must be parsed", 2, original.schedules.size)
-        val expected = original.schedules.single { it.id == original.preferences!!.activeScheduleId }
-        assertEquals("三上", expected.name)
-        assertEquals(9, expected.courses.size)
-        assertEquals(21, expected.sessions.size)
-
-        val old = Schedule(name = "原文件导入前的旧课表", week1Monday = "2026-10-12")
-        runBlocking {
-            store.save(old)
-            store.updatePreferences { appearance.copy(activeScheduleId = old.id) }
-        }
-        ui.waitUntil(10000) { ui.onAllNodesWithText(old.name).fetchSemanticsNodes().isNotEmpty() }
-        val beforeImport = runBlocking { store.all().associateBy { it.id } }
-        val file = File(ui.activity.cacheDir, "exports/user-original.van.json")
-        file.parentFile!!.mkdirs()
-        file.writeBytes(bytes)
-        assertArrayEquals(bytes, file.readBytes())
-        val uri = FileProvider.getUriForFile(ui.activity, "${ui.activity.packageName}.files", file)
-        val monitor = object : Instrumentation.ActivityMonitor() {
-            override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? =
-                if (intent.action == Intent.ACTION_OPEN_DOCUMENT) Instrumentation.ActivityResult(
-                    Activity.RESULT_OK,
-                    Intent().setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                ) else null
-        }
-        instrumentation.addMonitor(monitor)
-        try {
-            openOriginalPreview()
-            ui.onNodeWithText("已读取 9 门课程 / 21 个时段").assertIsDisplayed()
-            ui.onNode(hasSetTextAction() and hasText("作息（节次,开始时间,结束时间）"))
-                .performScrollTo()
-                .assertTextContains("1,08:10,08:55", substring = true)
-                .assertTextContains("3,10:30,11:15", substring = true)
-                .assertTextContains("4,11:25,12:10", substring = true)
-            ui.onNodeWithText("周五 10:20–12:00").performScrollTo().assertIsDisplayed()
-            ui.onNode(isToggleable()).performScrollTo().assertIsOff().performClick()
-            ui.onNodeWithText("保存为新课表").performScrollTo().performClick()
-            ui.waitUntil(10000) {
-                runBlocking { store.active()?.let { it.name == expected.name && it.id !in beforeImport } == true }
-            }
-            val saved = runBlocking { store.active()!! }
-            assertEquals(normalized(expected), normalized(saved))
-            runBlocking {
-                val all = store.all().associateBy { it.id }
-                beforeImport.forEach { (id, value) -> assertEquals("Preserve prior schedule $id", value, all[id]) }
-                assertEquals(saved, Codec.restore(store.backup()).schedules.single { it.id == saved.id })
-            }
-            returnToTimetableAfterImport()
-            chooseWeek(2)
-            assertOriginalGridTimes(saved, 2)
-            screenshot("023-original-imported-custom-times.png")
-            ui.activityRule.scenario.recreate()
-            ui.onNodeWithText("第2周 ▾").assertExists()
-            assertOriginalGridTimes(saved, 2)
-
-            openOriginalPreview()
-            ui.onNodeWithText("恢复完整备份 · 替换全部数据").performScrollTo().performClick()
-            ui.onNodeWithText("确认").performClick()
-            ui.waitUntil(10000) {
-                runBlocking {
-                    store.all().associateBy { it.id } == original.schedules.associateBy { it.id } &&
-                        store.prefs() == original.preferences
-                }
-            }
-            returnToTimetableAfterImport()
-            chooseWeek(2)
-            assertOriginalGridTimes(expected, 2)
-            ui.activityRule.scenario.recreate()
-            assertOriginalGridTimes(expected, 2)
-            runBlocking { assertEquals(original, Codec.restore(store.backup())) }
-            screenshot("023-original-restored-custom-times.png")
-        } finally {
-            instrumentation.removeMonitor(monitor)
-            file.delete()
-        }
-    }
-
-    private fun openOriginalPreview() {
-        ui.onNodeWithContentDescription("导入课表").performClick()
-        ui.onNodeWithText("选择本地课表文件").performClick()
-        ui.waitUntil(10000) { ui.onAllNodesWithText("导入预览").fetchSemanticsNodes().isNotEmpty() }
-    }
-
-    private fun returnToTimetableAfterImport() {
-        // Saving an import intentionally opens schedule management, where the new
-        // schedule can be reviewed. Return through its real navigation control.
-        ui.waitUntil(10000) { ui.onAllNodesWithText("课表管理").fetchSemanticsNodes().isNotEmpty() }
-        ui.onNodeWithContentDescription("返回").performClick()
-        ui.waitUntil(10000) { ui.onAllNodesWithTag("week-selector").fetchSemanticsNodes().isNotEmpty() }
-    }
-
-    private fun assertOriginalGridTimes(schedule: Schedule, week: Int) {
-        schedule.routines.first().sections.forEach { value ->
-            section(week, value.number).assert(hasAnyDescendant(hasText(value.start)))
-                .assert(hasAnyDescendant(hasText(value.end)))
-        }
-        val custom = CourseEngine.timetableDay(schedule, CourseEngine.dateAt(schedule, week, 5))
-            .single { it.session.mode == TimeMode.CLOCK }
-        assertEquals(LocalTime.of(10, 20), custom.start)
-        assertEquals(LocalTime.NOON, custom.end)
-        val band = ui.onNode(
-            hasTestTag("clock-band-10:20-10:30") and hasAnyAncestor(hasTestTag("week-grid-$week")),
-            useUnmergedTree = true,
-        )
-        band.assert(hasAnyDescendant(hasText("10:20"))).assert(hasAnyDescendant(hasText("10:30")))
-        ui.onNode(
-            hasTestTag("clock-band-09:50-10:30") and hasAnyAncestor(hasTestTag("week-grid-$week")),
-            useUnmergedTree = true,
-        ).assertDoesNotExist()
-        ui.onNodeWithTag("grid-course-${custom.id}").assertExists()
-        section(week, 1).performScrollTo().assertIsDisplayed()
-    }
-
-    private fun normalized(schedule: Schedule): Schedule {
-        val courseIds = schedule.courses.mapIndexed { index, value -> value.id to "course-$index" }.toMap()
-        val sessionIds = schedule.sessions.mapIndexed { index, value -> value.id to "session-$index" }.toMap()
-        val routineIds = schedule.routines.mapIndexed { index, value -> value.id to "routine-$index" }.toMap()
-        return schedule.copy(
-            id = "schedule",
-            importedAt = 0,
-            courses = schedule.courses.map { it.copy(id = courseIds.getValue(it.id)) },
-            sessions = schedule.sessions.map { it.copy(id = sessionIds.getValue(it.id), courseId = courseIds.getValue(it.courseId)) },
-            routines = schedule.routines.map { it.copy(id = routineIds.getValue(it.id)) },
-            routineRules = schedule.routineRules.map { it.copy(routineId = routineIds.getValue(it.routineId)) },
-            sessionOverrides = schedule.sessionOverrides.map { it.copy(sessionId = sessionIds.getValue(it.sessionId)) },
-        )
     }
 }

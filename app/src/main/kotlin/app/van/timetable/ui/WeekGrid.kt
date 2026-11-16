@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -14,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -75,10 +77,26 @@ internal fun WeekGrid(
     val sections = remember(s, monday) { CourseEngine.routine(s, monday).sections }
     val data = remember(s, monday, days, p.showInactive) { weekData(s, monday, days, p.showInactive) }
     val compactAxis = canCollapseGaps && p.showCourseGaps != true
+    val textMeasurer = rememberTextMeasurer()
+    val numberStyle = LocalTextStyle.current.copy(fontSize = 11.sp, lineHeight = 13.sp)
+    val timeStyle = LocalTextStyle.current.copy(fontSize = 9.sp, lineHeight = 11.sp)
+    // Measure using the same font and scale as the rendered labels. Fixed estimates
+    // can leave the final time line only a few pixels high on a compact grid.
+    val labels = remember(sections, textMeasurer, numberStyle, timeStyle) {
+        sections.map { n ->
+            Triple(
+                textMeasurer.measure(n.number.toString(), numberStyle, softWrap = false, maxLines = 1).size,
+                textMeasurer.measure(n.start, timeStyle, softWrap = false, maxLines = 1).size,
+                textMeasurer.measure(n.end, timeStyle, softWrap = false, maxLines = 1).size,
+            )
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize().testTag("week-grid-$week").gridPagingGuard(gridScroll)) {
         val density = LocalDensity.current
         val scale = density.fontScale.coerceAtLeast(1f)
-        val gutter = (34f * scale).dp
+        val labelWidth = with(density) { labels.maxOf { maxOf(it.first.width, it.second.width, it.third.width) }.toDp() }
+        val labelHeight = with(density) { labels.maxOf { it.first.height + it.second.height + it.third.height }.toDp() }
+        val gutter = maxOf((34f * scale).dp, labelWidth + 6.dp)
         val width = maxOf(maxWidth.value, 38f * scale * days + gutter.value).dp
         val dayWidth = (width - gutter) / days
         // Match 0.2.5's rounded cards on the compact axis; only time-axis
@@ -89,7 +107,9 @@ internal fun WeekGrid(
         val gapHeight = if (compactAxis) 0.dp else (20f * scale).dp
         val gapCount = remember(sections) { GridTimeline.create(sections).bands.count { it.section == null } }
         val fitted = (maxHeight - headerHeight - 8.dp - gapHeight * gapCount) / sections.size
-        val rowHeight = if (p.fitWeek) minOf(p.rowHeight.dp, maxOf((36f * scale).dp, fitted)) else p.rowHeight.dp
+        val minimumRowHeight = maxOf((36f * scale).dp, labelHeight + 4.dp)
+        val preferredRowHeight = maxOf(p.rowHeight.dp, minimumRowHeight)
+        val rowHeight = if (p.fitWeek) minOf(preferredRowHeight, maxOf(minimumRowHeight, fitted)) else preferredRowHeight
         val timeline = remember(sections, gapHeight, rowHeight) { GridTimeline.create(sections, gapHeight / rowHeight) }
         val placed = remember(data, timeline, rowHeight, gapHeight) {
             data.map { day ->
@@ -132,9 +152,9 @@ internal fun WeekGrid(
                 Box(Modifier.height(rowHeight * timeline.units).width(width)) {
                     sections.forEach { n ->
                         Column(Modifier.offset(y = rowHeight * timeline.position(LocalTime.parse(n.start))).width(gutter - 3.dp).height(rowHeight).testTag("section-${n.number}"), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.Center) {
-                            Text("${n.number}", fontSize = 11.sp, lineHeight = 13.sp, color = colors.muted)
-                            Text(n.start, fontSize = 9.sp, lineHeight = 11.sp, color = colors.muted)
-                            Text(n.end, fontSize = 9.sp, lineHeight = 11.sp, color = colors.muted)
+                            Text("${n.number}", style = numberStyle, maxLines = 1, softWrap = false, color = colors.muted)
+                            Text(n.start, style = timeStyle, maxLines = 1, softWrap = false, color = colors.muted)
+                            Text(n.end, style = timeStyle, maxLines = 1, softWrap = false, color = colors.muted)
                         }
                     }
                     if (p.showCustomTimeLabels) gapLabels.forEach { (band, times) ->

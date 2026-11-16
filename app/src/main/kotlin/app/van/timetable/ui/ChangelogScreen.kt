@@ -18,14 +18,14 @@ import androidx.compose.ui.unit.dp
 fun ChangelogScreen() {
     val context = LocalContext.current
     val entries = remember(context) {
-        context.assets.open("changelog.txt").bufferedReader().use { it.readText() }
+        context.assets.open("changelog.txt").bufferedReader().use { it.readText() }.replace("\r\n", "\n")
             .split("\n## ").filter { it.isNotBlank() }.map { entry ->
-                entry.removePrefix("## ").substringBefore('\n') to entry.substringAfter('\n').trim()
+                entry.removePrefix("## ").substringBefore('\n').trim() to entry.substringAfter('\n').trim()
             }
     }
     LazyColumn(Modifier.fillMaxSize().testTag("changelog-list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(entries, key = { it.first }) { (title, body) ->
-            var expanded by rememberSaveable(title) { mutableStateOf(title.startsWith("0.2.8")) }
+            var expanded by rememberSaveable(title) { mutableStateOf(title == entries.firstOrNull()?.first) }
             Panel {
                 Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 8.dp)) {
                     Text(title, Modifier.weight(1f), fontWeight = FontWeight.Medium)

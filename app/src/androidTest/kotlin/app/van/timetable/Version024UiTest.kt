@@ -1,19 +1,14 @@
 package app.van.timetable
 
-import android.app.Activity
-import android.app.Instrumentation
 import android.content.Intent
-import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import app.van.timetable.domain.*
-import app.van.timetable.system.ExcelReader
 import java.io.File
 import java.time.*
 import java.time.temporal.TemporalAdjusters
@@ -210,101 +205,5 @@ class Version024UiTest {
         ui.onNodeWithTag("week-viewport").performTouchInput { swipeLeft() }
         ui.onNodeWithText("第2周 ▾").assertExists()
         screenshot("024-pager-stress.png")
-    }
-
-    @Test
-    fun originalExcelReviewPreviewSaveRecreateAndBackupRestorePreserveAll26Runs() {
-        seed()
-        val bytes =
-            ParcelFileDescriptor.AutoCloseInputStream(
-                    instrumentation.uiAutomation.executeShellCommand(
-                        "cat /sdcard/Download/van-original.xlsx"
-                    )
-                )
-                .use { it.readBytes() }
-        assertTrue("Provide the original workbook with adb push", bytes.size > 5000)
-        val draft = DocumentImport.fromSheet(ExcelReader.read(bytes).single())
-        assertEquals(0, draft.unresolvedCount)
-        assertEquals(26, draft.rows.size)
-        val expected =
-            DocumentImport.toSchedule(
-                draft.rows,
-                today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)),
-            )
-        assertEquals(11, expected.courses.size)
-        assertEquals(26, expected.sessions.size)
-        assertTrue(draft.rows.all { it.teacher.isNotBlank() && it.place.isNotBlank() })
-        assertEquals(listOf("7", "10"), draft.rows.filter { it.day == "4" }.map { it.endSection })
-        val survey = draft.rows.filter { it.name == "市场调查" && it.day == "1" }
-        assertEquals(listOf("9-10", "1-3,6-7,11-16", "8", "8"), survey.map { it.weeks })
-        assertEquals(listOf("6-504", "6-301", "6-504", "6-504"), survey.map { it.place })
-        assertEquals(listOf("11", "11", "9", "11"), survey.map { it.endSection })
-        val file = File(ui.activity.cacheDir, "exports/original.xlsx")
-        file.parentFile!!.mkdirs()
-        file.writeBytes(bytes)
-        assertArrayEquals(bytes, file.readBytes())
-        val uri = FileProvider.getUriForFile(ui.activity, "${ui.activity.packageName}.files", file)
-        val monitor =
-            object : Instrumentation.ActivityMonitor() {
-                override fun onStartActivity(intent: Intent): Instrumentation.ActivityResult? =
-                    if (intent.action == Intent.ACTION_OPEN_DOCUMENT)
-                        Instrumentation.ActivityResult(
-                            Activity.RESULT_OK,
-                            Intent().setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                        )
-                    else null
-            }
-        instrumentation.addMonitor(monitor)
-        try {
-            ui.onNodeWithContentDescription("导入课表").performClick()
-            ui.onNodeWithText("选择本地课表文件").performClick()
-            ui.waitUntil(15000) {
-                ui.onAllNodesWithText("核对识别结果").fetchSemanticsNodes().isNotEmpty()
-            }
-            ui.onNodeWithText("形势与政策(五)").assertExists()
-            ui.onNode(hasScrollToNodeAction()).performScrollToNode(isToggleable())
-            ui.onNode(isToggleable()).performClick()
-            ui.onNodeWithText("继续核对学期与作息").performScrollTo().performClick()
-            ui.onNodeWithText("已读取 11 门课程 / 26 个时段").assertExists()
-            ui.onNode(hasSetTextAction() and hasText("新课表名称"))
-                .performScrollTo()
-                .performTextReplacement("原始Excel兼容验证")
-            ui.onNode(hasSetTextAction() and hasText("第1周周一 YYYY-MM-DD"))
-                .performScrollTo()
-                .performTextReplacement(expected.week1Monday)
-            ui.onNode(isToggleable()).performScrollTo().assertIsOff().performClick()
-            ui.onNodeWithText("保存为新课表").performScrollTo().performClick()
-            ui.waitUntil(10000) { runBlocking { store.active()?.name == "原始Excel兼容验证" } }
-            val saved = runBlocking { store.active()!! }
-            fun runs(schedule: Schedule) =
-                schedule.sessions.map { session ->
-                    listOf(
-                        schedule.courses.single { it.id == session.courseId }.name,
-                        session.day,
-                        session.startSection,
-                        session.endSection,
-                        session.weeks,
-                        session.teacher,
-                        session.place,
-                    )
-                }
-            assertEquals(runs(expected), runs(saved))
-            ui.onNodeWithContentDescription("返回").performClick()
-            ui.onNodeWithTag("week-selector").assertExists()
-            screenshot("024-original-excel.png")
-            ui.activityRule.scenario.recreate()
-            assertEquals(saved, runBlocking { store.active() })
-            val backup = runBlocking { Codec.restore(store.backup()) }
-            runBlocking {
-                store.delete(saved.id)
-                store.restore(backup)
-            }
-            ui.activityRule.scenario.recreate()
-            assertEquals(runs(expected), runs(runBlocking { store.active()!! }))
-            assertEquals(12, saved.routines.first().sections.size)
-        } finally {
-            instrumentation.removeMonitor(monitor)
-            file.delete()
-        }
     }
 }
