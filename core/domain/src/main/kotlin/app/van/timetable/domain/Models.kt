@@ -135,6 +135,7 @@ data class Preferences(
     val monetColor: Boolean = true,
     val predictiveBack: Boolean = true,
     val textMotionBlur: Boolean = true,
+    val cardStyle: String = "pastel",
     val cardTintStrength: Float = 0.72f,
     val cardOpacity: Float = 0.78f,
     val cardBlurDp: Float = 16f,

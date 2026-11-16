@@ -39,6 +39,8 @@ data class VanColors(
     val tones: List<Color>,
     val inactive: Color,
     val inactiveText: Color,
+    /** 午休 / 晚休横带的底色：比页面底色略深一档，不透明。 */
+    val breakBand: Color = Color(0xFFF0F0F0),
     val monetActive: Boolean = false,
 )
 
@@ -54,6 +56,7 @@ private val light =
         CoursePalette.light.map { Color(it) },
         Color(0xFFD4D7DE),
         Color(0xFF55565A),
+        Color(0xFFF0F0F0),
     )
 private val dark =
     VanColors(
@@ -67,6 +70,7 @@ private val dark =
         CoursePalette.dark.map { Color(it) },
         Color(0xFF344155),
         Color(0xFFC1CBDA),
+        Color(0xFF323232),
     )
 val LocalVan = staticCompositionLocalOf { light }
 
@@ -131,6 +135,7 @@ fun VanTheme(p: Preferences, content: @Composable () -> Unit) {
                 tones = monetTones,
                 inactive = dynamicScheme.surfaceVariant,
                 inactiveText = dynamicScheme.onSurfaceVariant,
+                breakBand = dynamicScheme.surfaceContainerHigh,
                 monetActive = true,
             )
         } else {

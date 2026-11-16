@@ -75,6 +75,7 @@ fun DayList(
                             ZoneId.of(s.zone),
                             holiday == null && o.id in conflicts,
                             inactive = holiday != null,
+                            pastel = p.cardStyle != "solid",
                         )
                     }
                 }
@@ -87,6 +88,7 @@ fun DayList(
                     ZoneId.of(s.zone),
                     holiday == null && o.id in conflicts,
                     inactive = holiday != null,
+                    pastel = p.cardStyle != "solid",
                 )
             }
         }

@@ -236,6 +236,12 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
 
         Panel {
             Text("课程卡片效果与排版", fontWeight = FontWeight.Medium)
+            Text("卡片风格")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("pastel" to "柔和", "solid" to "实色").forEach { (id, label) ->
+                    FilterChip(p.cardStyle == id, { vm.prefs { it.copy(cardStyle = id) } }, label = { Text(label) })
+                }
+            }
             Text("卡片着色程度：${(p.cardTintStrength * 100).roundToInt()}%")
             Slider(p.cardTintStrength, { v -> vm.prefs { it.copy(cardTintStrength = v) } }, valueRange = 0f..1f)
             Text("卡片不透明度：${(p.cardOpacity * 100).roundToInt()}%")

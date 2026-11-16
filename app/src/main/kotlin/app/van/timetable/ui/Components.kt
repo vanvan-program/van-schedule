@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,23 +102,40 @@ fun CourseRow(
     zone: ZoneId = ZoneId.of("Asia/Shanghai"),
     conflict: Boolean = false,
     inactive: Boolean = false,
+    pastel: Boolean = true,
 ) {
     val c = LocalVan.current
     val current = !inactive && now >= o.startsAt(zone) && now < o.endsAt(zone)
+    val courseColor = c.courseColor(o.course)
+    // 与周课表同一套：浅色底 + 同色系文字，放假/非本周用灰色
+    val surface =
+        when {
+            inactive -> c.inactive
+            pastel -> courseColor.copy(alpha = 0.18f).compositeOver(c.background)
+            else -> c.surface
+        }
+    val accent =
+        if (inactive) c.inactiveText
+        else if (pastel) {
+            Color(
+                CoursePalette.pastelTextArgb(
+                    courseColor.toArgb().toLong() and 0xFFFFFFFFL,
+                    surface.toArgb().toLong() and 0xFFFFFFFFL,
+                    c.dark,
+                )
+            )
+        } else courseColor
     Surface(
         Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = ContinuousRoundedRectangle(16.dp),
-        color = if (inactive) c.inactive else c.surface,
-        contentColor = if (inactive) c.inactiveText else c.text,
+        shape = ContinuousRoundedRectangle(if (pastel) 14.dp else 16.dp),
+        color = surface,
+        contentColor = if (inactive) c.inactiveText else if (pastel) accent else c.text,
     ) {
         Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(
                 Modifier.width(5.dp)
                     .height(66.dp)
-                    .background(
-                        if (inactive) c.inactiveText else c.courseColor(o.course),
-                        ContinuousRoundedRectangle(3.dp),
-                    )
+                    .background(accent, ContinuousRoundedRectangle(3.dp))
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row {
@@ -126,11 +146,21 @@ fun CourseRow(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
-                    if (current) Text("正在上课", color = c.blue, fontSize = 12.sp)
+                    if (current) Text("正在上课", color = if (pastel) accent else c.blue, fontSize = 12.sp)
                 }
-                Muted(o.place.ifBlank { "地点未填写" })
+                Text(
+                    o.place.ifBlank { "地点未填写" }.let { if (pastel) "@$it" else it },
+                    fontSize = 13.sp,
+                    color = if (pastel) accent.copy(alpha = 0.9f) else c.muted,
+                )
                 Text("${o.start}–${o.end}" + (if (conflict) " · 时间冲突" else ""), fontSize = 14.sp)
-                if (o.session.teacher.isNotBlank()) Muted(o.session.teacher)
+                if (o.session.teacher.isNotBlank()) {
+                    Text(
+                        o.session.teacher,
+                        fontSize = 13.sp,
+                        color = if (pastel) accent.copy(alpha = 0.85f) else c.muted,
+                    )
+                }
             }
         }
     }

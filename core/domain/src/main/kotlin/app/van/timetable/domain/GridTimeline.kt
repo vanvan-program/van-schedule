@@ -26,6 +26,29 @@ class GridTimeline private constructor(val bands: List<Band>) {
     fun gapContaining(start: LocalTime, end: LocalTime): Band? =
         bands.firstOrNull { it.section == null && start >= it.start && end <= it.end }
 
+    /**
+     * 两个节次之间的空档属于哪一段休息。
+     *
+     * 只看「前面有课、后面也有课」的空档：作息表首尾那两个空档（0 点到第一节课、最后一节课到 24 点）
+     * 只是时间轴的两端，标成「午休」会很怪。
+     */
+    fun breakKindOf(band: Band): BreakKind? {
+        if (band.section != null) return null
+        val index = bands.indexOf(band)
+        if (index <= 0 || index >= bands.lastIndex) return null
+        if (bands[index - 1].section == null || bands[index + 1].section == null) return null
+        return when {
+            band.start >= LocalTime.of(16, 0) -> BreakKind.DINNER
+            band.end <= LocalTime.of(15, 0) && band.start >= LocalTime.of(10, 0) -> BreakKind.LUNCH
+            else -> null
+        }
+    }
+
+    enum class BreakKind {
+        LUNCH,
+        DINNER,
+    }
+
     companion object {
         /** Check the whole timetable so paging never changes the spacing policy. */
         fun canCollapseGaps(schedule: Schedule): Boolean {

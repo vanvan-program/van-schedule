@@ -48,119 +48,104 @@ internal fun TimetableHeader(
     var selectWeek by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var scheduleDropdown by remember { mutableStateOf(false) }
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    // Nexio 的顶栏是「居中周次 + 右侧图标」：没有课表名胶囊，切换课表收进更多菜单
+    Box(Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
         TextButton(
             onClick = { selectWeek = true },
-            modifier = Modifier.testTag("week-selector"),
-            contentPadding = PaddingValues(horizontal = 4.dp),
+            modifier = Modifier.align(Alignment.Center).testTag("week-selector"),
+            contentPadding = PaddingValues(horizontal = 10.dp),
         ) {
             MotionText(
-                "第${week}周 ▾",
-                fontSize = 17.sp,
-                lineHeight = 21.sp,
-                fontWeight = FontWeight.Bold,
+                "第${week}周",
+                fontSize = 20.sp,
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.SemiBold,
             )
         }
-        Box(Modifier.weight(1f)) {
-            Row(
-                Modifier.clip(ContinuousRoundedRectangle(12.dp))
-                    .clickable {
-                        if (schedules.size > 1) scheduleDropdown = true
-                        else nav("schedules")
-                    }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                MotionText(
-                    s.name,
-                    fontSize = 13.sp,
-                    lineHeight = 17.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (schedules.size > 1) {
-                    Text("▾", fontSize = 11.sp, color = colors.muted)
-                }
+        Row(
+            Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            IconButton(onClick = { nav("import") }, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Outlined.FileUpload, "导入课表", Modifier.size(22.dp))
             }
-            if (scheduleDropdown) {
-                GlassDropdownPanel(
-                    expanded = scheduleDropdown,
-                    onDismiss = { scheduleDropdown = false },
-                    backdrop = backdrop,
-                    materialLevel = materialLevel,
-                    isDark = colors.dark,
-                    surfaceColor = colors.surface,
-                ) {
-                    schedules.forEach { item ->
-                        val isCurrent = item.id == s.id
-                        GlassDropdownItem(
-                            label = if (isCurrent) "${item.name} ✓" else item.name,
-                            selected = isCurrent,
-                            highlightColor = colors.blue,
-                        ) {
-                            scheduleDropdown = false
-                            if (!isCurrent) onSelectSchedule(item.id)
+            IconButton(onClick = { nav("edit:new") }, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Outlined.Add, "添加课程", Modifier.size(22.dp))
+            }
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Outlined.MoreVert, "课表菜单", Modifier.size(22.dp))
+                }
+                if (menu) {
+                    GlassDropdownPanel(
+                        expanded = menu,
+                        onDismiss = { menu = false },
+                        backdrop = backdrop,
+                        materialLevel = materialLevel,
+                        isDark = colors.dark,
+                        surfaceColor = colors.surface,
+                        alignment = Alignment.TopEnd,
+                    ) {
+                        GlassDropdownItem(label = "切换课表…") {
+                            menu = false
+                            if (schedules.size > 1) scheduleDropdown = true else nav("schedules")
+                        }
+                        GlassDropdownItem(label = "上一周", enabled = week > 1) {
+                            onPrevWeek()
+                            menu = false
+                        }
+                        GlassDropdownItem(label = "下一周", enabled = week < s.maxWeeks) {
+                            onNextWeek()
+                            menu = false
+                        }
+                        GlassDropdownItem(label = "回到本周") {
+                            onToday()
+                            menu = false
+                        }
+                        GlassDropdownItem(label = if (daily) "切换为周课表" else "切换为日列表") {
+                            onToggleMode()
+                            menu = false
+                        }
+                        GlassDropdownItem(label = "课表管理") {
+                            menu = false
+                            nav("schedules")
+                        }
+                        GlassDropdownItem(label = "外观设置") {
+                            menu = false
+                            nav("appearance")
                         }
                     }
-                    GlassDropdownItem(
-                        label = "管理全部课表…",
-                        selected = false,
-                        highlightColor = colors.muted,
-                    ) {
-                        scheduleDropdown = false
-                        nav("schedules")
-                    }
                 }
-            }
-        }
-        IconButton(onClick = { nav("import") }, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Outlined.FileUpload, "导入课表", Modifier.size(22.dp))
-        }
-        IconButton(onClick = { nav("edit:new") }, modifier = Modifier.size(40.dp)) {
-            Icon(Icons.Outlined.Add, "添加课程", Modifier.size(22.dp))
-        }
-        Box {
-            IconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Outlined.MoreHoriz, "课表菜单", Modifier.size(22.dp))
-            }
-            if (menu) {
-                GlassDropdownPanel(
-                    expanded = menu,
-                    onDismiss = { menu = false },
-                    backdrop = backdrop,
-                    materialLevel = materialLevel,
-                    isDark = colors.dark,
-                    surfaceColor = colors.surface,
-                    alignment = Alignment.TopEnd,
-                ) {
-                    GlassDropdownItem(label = "上一周", enabled = week > 1) {
-                        onPrevWeek()
-                        menu = false
-                    }
-                    GlassDropdownItem(label = "下一周", enabled = week < s.maxWeeks) {
-                        onNextWeek()
-                        menu = false
-                    }
-                    GlassDropdownItem(label = "回到本周") {
-                        onToday()
-                        menu = false
-                    }
-                    GlassDropdownItem(label = if (daily) "切换为周课表" else "切换为日列表") {
-                        onToggleMode()
-                        menu = false
-                    }
-                    GlassDropdownItem(label = "课表管理") {
-                        menu = false
-                        nav("schedules")
-                    }
-                    GlassDropdownItem(label = "外观设置") {
-                        menu = false
-                        nav("appearance")
+                if (scheduleDropdown) {
+                    GlassDropdownPanel(
+                        expanded = scheduleDropdown,
+                        onDismiss = { scheduleDropdown = false },
+                        backdrop = backdrop,
+                        materialLevel = materialLevel,
+                        isDark = colors.dark,
+                        surfaceColor = colors.surface,
+                        alignment = Alignment.TopEnd,
+                    ) {
+                        schedules.forEach { item ->
+                            val isCurrent = item.id == s.id
+                            GlassDropdownItem(
+                                label = if (isCurrent) "${item.name} ✓" else item.name,
+                                selected = isCurrent,
+                                highlightColor = colors.blue,
+                            ) {
+                                scheduleDropdown = false
+                                if (!isCurrent) onSelectSchedule(item.id)
+                            }
+                        }
+                        GlassDropdownItem(
+                            label = "管理全部课表…",
+                            selected = false,
+                            highlightColor = colors.muted,
+                        ) {
+                            scheduleDropdown = false
+                            nav("schedules")
+                        }
                     }
                 }
             }

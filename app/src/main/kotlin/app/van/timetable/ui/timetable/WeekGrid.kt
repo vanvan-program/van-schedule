@@ -15,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.input.pointer.pointerInput
@@ -163,8 +165,8 @@ internal fun WeekGrid(
     }
     val compactAxis = canCollapseGaps && p.showCourseGaps != true
     val textMeasurer = rememberTextMeasurer()
-    val numberStyle = LocalTextStyle.current.copy(fontSize = 11.sp, lineHeight = 13.sp)
-    val timeStyle = LocalTextStyle.current.copy(fontSize = 9.sp, lineHeight = 11.sp)
+    val numberStyle = LocalTextStyle.current.copy(fontSize = 14.sp, lineHeight = 17.sp)
+    val timeStyle = LocalTextStyle.current.copy(fontSize = 10.sp, lineHeight = 12.sp)
     // Measure using the same font and scale as the rendered labels. Fixed estimates
     // can leave the final time line only a few pixels high on a compact grid.
     val labels = remember(sections, textMeasurer, numberStyle, timeStyle) {
@@ -191,12 +193,12 @@ internal fun WeekGrid(
         val scale = density.fontScale.coerceAtLeast(1f)
         val labelWidth = with(density) { labels.maxOf { maxOf(it.first.width, it.second.width, it.third.width) }.toDp() }
         val labelHeight = with(density) { labels.maxOf { it.first.height + it.second.height + it.third.height }.toDp() }
-        val gutter = maxOf((34f * scale).dp, labelWidth + 6.dp)
-        val width = maxOf(maxWidth.value, 38f * scale * days + gutter.value).dp
+        val gutter = maxOf(36.dp, labelWidth + 8.dp)
+        val width = maxOf(maxWidth.value, 40f * days + gutter.value).dp
         val dayWidth = (width - gutter) / days
         val cardInsetX = 2.dp
-        val cardInsetY = if (compactAxis) 2.dp else 1.dp
-        val headerHeight = maxOf(44f, 36f * scale).dp
+        val cardInsetY = 2.dp
+        val headerHeight = maxOf(40.dp, (34f * scale).dp)
         val gapHeight = if (compactAxis) 0.dp else (20f * scale).dp
         val gapCount = remember(sections) { GridTimeline.create(sections).bands.count { it.section == null } }
         val fitted = (maxHeight - headerHeight - 8.dp - gapHeight * gapCount) / sections.size
@@ -245,12 +247,30 @@ internal fun WeekGrid(
         }
         Column(Modifier.horizontalScroll(gridScroll).width(width)) {
             Row(Modifier.height(headerHeight)) {
-                Text("${monday.monthValue}月", Modifier.width(gutter).padding(top = 12.dp), fontSize = 11.sp, lineHeight = 14.sp)
+                Spacer(Modifier.width(gutter))
                 repeat(days) { d ->
                     val date = data[d].date
-                    Column(Modifier.width(dayWidth).testTag("week-day-$week-$d").clickable { onDaySelected(date) }.padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(weekdays[d].removePrefix("周"), fontSize = 12.sp, lineHeight = 15.sp, color = if (date == dateNow) colors.blue else colors.text)
-                        Text("${date.dayOfMonth}", fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, color = if (date == dateNow) colors.blue else colors.text)
+                    val isToday = date == dateNow
+                    Column(
+                        Modifier.width(dayWidth).fillMaxHeight()
+                            .testTag("week-day-$week-$d")
+                            .clickable { onDaySelected(date) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            weekdays[d],
+                            fontSize = 15.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isToday) colors.blue else colors.text,
+                        )
+                        Text(
+                            "${date.monthValue}/${date.dayOfMonth}",
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                            color = if (isToday) colors.blue else colors.muted,
+                        )
                     }
                 }
             }
@@ -263,31 +283,43 @@ internal fun WeekGrid(
                         val secColor = if (isCurrentSection) colors.blue else colors.muted
                         Column(
                             Modifier.offset(y = rowHeight * timeline.position(secStart))
-                                .width(gutter - 3.dp)
+                                .width(gutter)
                                 .height(rowHeight)
-                                .then(
-                                    if (isCurrentSection) {
-                                        Modifier.background(
-                                            colors.blue.copy(alpha = 0.14f),
-                                            ContinuousRoundedRectangle(8.dp),
-                                        )
-                                    } else Modifier
-                                )
                                 .testTag("section-${n.number}"),
-                            horizontalAlignment = Alignment.End,
+                            horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center,
                         ) {
                             Text(
                                 n.label.ifBlank { "${n.number}" },
-                                style = numberStyle,
-                                fontSize = if (n.label.isNotBlank()) 10.sp else 11.sp,
-                                fontWeight = if (isCurrentSection) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = if (n.label.isNotBlank()) 12.sp else 14.sp,
+                                lineHeight = 17.sp,
+                                fontWeight = if (isCurrentSection) FontWeight.Medium else FontWeight.Normal,
                                 maxLines = 1,
                                 softWrap = false,
-                                color = secColor,
+                                color = if (isCurrentSection) colors.blue else colors.text,
                             )
-                            Text(n.start, style = timeStyle, maxLines = 1, softWrap = false, color = secColor)
-                            Text(n.end, style = timeStyle, maxLines = 1, softWrap = false, color = secColor)
+                            Text(n.start, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, softWrap = false, color = secColor)
+                            Text(n.end, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, softWrap = false, color = secColor)
+                        }
+                    }
+                    // 午休 / 晚休：只在「前面有课、后面也有课」的空档里画一条通栏浅色横带
+                    timeline.bands.filter { it.section == null }.forEach { band ->
+                        val kind = timeline.breakKindOf(band) ?: return@forEach
+                        val bandTop = rowHeight * timeline.position(band.start)
+                        val bandHeight = rowHeight * band.units
+                        Box(
+                            Modifier.offset(x = gutter + 4.dp, y = bandTop + 2.dp)
+                                .width(width - gutter - 8.dp)
+                                .height(maxOf(16.dp, bandHeight - 4.dp))
+                                .background(colors.breakBand, ContinuousRoundedRectangle(10.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                if (kind == GridTimeline.BreakKind.LUNCH) "午休" else "晚休",
+                                fontSize = 12.sp,
+                                lineHeight = 15.sp,
+                                color = colors.muted,
+                            )
                         }
                     }
                     if (p.showCustomTimeLabels) gapLabels.forEach { (band, times) ->
@@ -347,6 +379,7 @@ internal fun WeekGrid(
                             inactive = entry.inactive,
                             hasWeekNote = !o.course.weekNotes[week].isNullOrBlank(),
                             p = p,
+                            pastel = p.cardStyle != "solid",
                             modifier = Modifier.offset(x = gutter + dayWidth * d + cardInsetX + cardWidth * item.lane, y = item.top + cardInsetY)
                                 // 只有正在被拖走的那张卡需要独立图层；其余卡片保持零图层，
                                 // 翻页时不会一屏挂十几层离屏合成。
@@ -404,6 +437,8 @@ private fun GridCard(
     inactive: Boolean,
     hasWeekNote: Boolean,
     p: Preferences,
+    /** 柔和卡片：浅色底 + 同色系文字，整块不加玻璃、不描边。 */
+    pastel: Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
@@ -412,8 +447,9 @@ private fun GridCard(
     val redrawSignal = LocalVanGlassRedrawSignal.current
     val materialLevel = LocalVanMaterialLevel.current
     val density = LocalDensity.current
-    val nameSize = (if (compact) 9f else if (width < 52.dp) 11f else 12f) * p.cardTextScale.coerceIn(0.75f, 1.4f)
-    val subSize = 9f * p.cardTextScale.coerceIn(0.75f, 1.4f)
+    val textScale = p.cardTextScale.coerceIn(0.75f, 1.4f)
+    val nameSize = (if (compact) 9f else if (width < 52.dp) 11f else if (pastel) 12.7f else 12f) * textScale
+    val subSize = (if (pastel) 11f else 9f) * textScale
     val showPlace = p.showCardPlace && place.isNotBlank() && !compact
     val showTeacher = p.showCardTeacher && teacher.isNotBlank() && !compact
     val placeLines = if (height < 60.dp) 1 else 2
@@ -422,6 +458,16 @@ private fun GridCard(
     val nameLines = if (compact) 1 else ((height - subHeight - 6.dp) / with(density) { (nameSize.sp * 1.15f).toDp() }).toInt().coerceIn(1, 5)
     val textColor = when {
         inactive -> colors.inactiveText
+        pastel -> {
+            val cardSurface = color.copy(alpha = 0.18f).compositeOver(colors.background)
+            Color(
+                CoursePalette.pastelTextArgb(
+                    color.toArgb().toLong() and 0xFFFFFFFFL,
+                    cardSurface.toArgb().toLong() and 0xFFFFFFFFL,
+                    colors.dark,
+                )
+            )
+        }
         p.cardTextColorMode == "light" -> Color.White
         p.cardTextColorMode == "dark" -> Color(0xFF142036)
         else -> courseTextColor(color)
@@ -430,9 +476,12 @@ private fun GridCard(
     val shape = ContinuousRoundedRectangle(corner)
     val radiusPx = with(density) { corner.toPx() }
     var cardOrigin by remember { mutableStateOf(Offset.Zero) }
-    val useStaticGlass = !inactive && !compact && glassSurface != null && materialLevel != GlassMaterialLevel.NONE
+    val useStaticGlass =
+        !pastel && !inactive && !compact && glassSurface != null &&
+            materialLevel != GlassMaterialLevel.NONE
     val fillAlpha = when {
-        inactive -> 0.85f
+        inactive -> if (pastel) 0.12f else 0.85f
+        pastel -> 0.18f
         materialLevel == GlassMaterialLevel.NONE -> 1f
         else -> p.cardOpacity.coerceIn(0.25f, 1f)
     }
@@ -466,9 +515,9 @@ private fun GridCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = verticalArrangement,
         ) {
-            Text(prefix + name, color = textColor, fontSize = nameSize.sp, lineHeight = (nameSize * 1.15f).sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = nameLines, overflow = TextOverflow.Ellipsis)
-            if (showPlace) Text(place, color = textColor.copy(alpha = 0.88f), fontSize = subSize.sp, lineHeight = (subSize * 1.2f).sp, textAlign = TextAlign.Center, maxLines = placeLines, overflow = TextOverflow.Ellipsis)
-            if (showTeacher) Text(teacher, color = textColor.copy(alpha = 0.8f), fontSize = subSize.sp, lineHeight = (subSize * 1.2f).sp, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(prefix + name, color = textColor, fontSize = nameSize.sp, lineHeight = (nameSize * 1.18f).sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = nameLines, overflow = TextOverflow.Ellipsis)
+            if (showPlace) Text(if (pastel) "@$place" else place, color = textColor.copy(alpha = if (pastel) 1f else 0.88f), fontSize = subSize.sp, lineHeight = (subSize * 1.2f).sp, textAlign = TextAlign.Center, maxLines = placeLines, overflow = TextOverflow.Ellipsis)
+            if (showTeacher) Text(teacher, color = textColor.copy(alpha = if (pastel) 0.9f else 0.8f), fontSize = subSize.sp, lineHeight = (subSize * 1.2f).sp, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (hasWeekNote && !compact) {
             Text(
