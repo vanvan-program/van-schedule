@@ -2,8 +2,7 @@
 package app.van.timetable.ui
 
 import android.app.Activity
-import android.appwidget.AppWidgetManager
-import android.content.*
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.*
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,7 +11,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -36,13 +34,17 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.van.timetable.domain.*
-import app.van.timetable.school.*
+import app.van.timetable.school.SchoolActivity
 import app.van.timetable.system.*
+import app.van.timetable.ui.navigation.VanNavHost
+import app.van.timetable.ui.navigation.VanNavHostEnv
+import app.van.timetable.ui.navigation.VanRoute
+import app.van.timetable.ui.navigation.normalizeRoute
+import app.van.timetable.ui.navigation.vanRouteOf
 import app.van.timetable.ui.nexio.*
 import app.van.timetable.widget.*
 import com.haooz.softglass.GlassMaterialLevel
@@ -53,6 +55,13 @@ import com.haooz.softglass.shape.ContinuousRoundedRectangle
 import java.time.*
 import kotlinx.coroutines.*
 
+/**
+ * 应用外壳：主题、壁纸、玻璃材质、顶栏/底栏、返回栈与 Activity 结果回调都在这里，
+ * 具体页面由 [VanNavHost] 按 [VanRoute] 分发。
+ *
+ * 0.4.0 及之前这个文件同时承担导航、四个文件回调、备份导出、分享、小组件说明与全部屏幕分发，
+ * 现在只保留「壳」的职责，屏幕实现见 `ui/timetable/` 与各独立屏幕文件。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VanApp(
@@ -71,7 +80,7 @@ fun VanApp(
     val importProgress by vm.importProgress.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    var route by rememberSaveable { mutableStateOf("main") }
+    var route by rememberSaveable(stateSaver = VanRouteSaver) { mutableStateOf<VanRoute>(VanRoute.Home) }
     val stack =
         rememberSaveable(
             saver =
@@ -92,20 +101,21 @@ fun VanApp(
     val displayed =
         if (viewedScheduleId == null) state.active
         else state.schedules.firstOrNull { it.id == viewedScheduleId }
-    fun nav(r: String) {
-        if (r == "schedules") viewedScheduleId = null
-        stack += route
+
+    fun nav(target: String) {
+        if (target == "schedules") viewedScheduleId = null
+        stack += route.key
         // Each visit owns a draft; restored editors must never overwrite a previously saved course.
-        route = if (r.startsWith("edit:") || r.startsWith("quick:")) "$r:${newId()}" else r
+        route = vanRouteOf(normalizeRoute(target, newId()))
     }
     fun back() {
-        if (route.startsWith("edit:") || route.startsWith("quick:"))
-            screenStates.removeState("$route:$tab:${displayed?.id.orEmpty()}:")
-        route = if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex) else "main"
+        if (route is VanRoute.CourseEdit || route is VanRoute.QuickAdd)
+            screenStates.removeState("${route.key}:$tab:${displayed?.id.orEmpty()}:")
+        route = stack.removeLastOrNull()?.let(::vanRouteOf) ?: VanRoute.Home
     }
     fun home() {
         stack.clear()
-        route = "main"
+        route = VanRoute.Home
     }
     LaunchedEffect(Unit) { vm.messages.collect { message = it } }
     LaunchedEffect(Unit) {
@@ -143,8 +153,8 @@ fun VanApp(
         }
     }
     var backProgress by remember { mutableFloatStateOf(0f) }
-    BackHandler(route != "main" && !state.preferences.predictiveBack) { back() }
-    PredictiveBackHandler(enabled = route != "main" && state.preferences.predictiveBack) { progressFlow ->
+    BackHandler(route != VanRoute.Home && !state.preferences.predictiveBack) { back() }
+    PredictiveBackHandler(enabled = route != VanRoute.Home && state.preferences.predictiveBack) { progressFlow ->
         try {
             progressFlow.collect { event -> backProgress = event.progress }
             backProgress = 0f
@@ -240,7 +250,7 @@ fun VanApp(
         Box(
             Modifier.fillMaxSize()
                 .graphicsLayer {
-                    if (backProgress > 0f && route != "main") {
+                    if (backProgress > 0f && route != VanRoute.Home) {
                         val s = 1f - 0.08f * backProgress
                         scaleX = s
                         scaleY = s
@@ -286,7 +296,7 @@ fun VanApp(
             Scaffold(
                 containerColor = Color.Transparent,
                 topBar = {
-                    if (route != "main")
+                    if (route != VanRoute.Home)
                         ProgressiveBlurTopBar(
                             backdrop = mainBackdrop,
                             tintColor = c.top,
@@ -294,7 +304,7 @@ fun VanApp(
                             useGradientMask = materialLevel == GlassMaterialLevel.NONE,
                         ) {
                             TopAppBar(
-                                title = { MotionText(title(route)) },
+                                title = { MotionText(route.title) },
                                 navigationIcon = {
                                     IconButton(
                                         onClick = {
@@ -311,7 +321,7 @@ fun VanApp(
                         }
                 },
                 bottomBar = {
-                    if (route == "main") {
+                    if (route == VanRoute.Home) {
                         val navShape = ContinuousRoundedRectangle(28.dp)
                         val navBg =
                             if (c.dark) c.surface.copy(alpha = 0.85f)
@@ -343,219 +353,111 @@ fun VanApp(
                     }
                 },
             ) { insets ->
-        Box(Modifier.padding(insets).fillMaxSize()) {
-            if (!state.ready) CircularProgressIndicator(Modifier.align(Alignment.Center))
-            else {
-                val importKey = when (route) {
-                    "document" -> document?.id.orEmpty()
-                    "preview" -> imported?.schedules?.firstOrNull()?.id.orEmpty()
-                    else -> ""
-                }
-                val destination = VanDestination(route, tab, displayed?.id, importKey, stack.size)
-                AnimatedContent(
-                    targetState = destination,
-                    contentKey = { it.key },
-                    modifier = Modifier.fillMaxSize(),
-                    transitionSpec = {
-                        val detail = initialState.route.startsWith("detail:") || targetState.route.startsWith("detail:")
-                        val direction = if (targetState.route == initialState.route) {
-                            if (targetState.tab > initialState.tab) 1 else -1
-                        } else if (targetState.depth >= initialState.depth) 1 else -1
-                        val motion = if (detail) {
-                            fadeIn(tween(180)) togetherWith fadeOut(tween(120))
-                        } else {
-                            (fadeIn(tween(180)) + slideInHorizontally(
-                                tween(260, easing = FastOutSlowInEasing),
-                                initialOffsetX = { direction * minOf(it / 12, 64) },
-                            )) togetherWith (fadeOut(tween(120)) + slideOutHorizontally(
-                                tween(260, easing = FastOutSlowInEasing),
-                                targetOffsetX = { -direction * minOf(it / 16, 48) },
-                            ))
+                Box(Modifier.padding(insets).fillMaxSize()) {
+                    if (!state.ready) CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    else {
+                        val importKey = when (route) {
+                            VanRoute.DocumentReview -> document?.id.orEmpty()
+                            VanRoute.ImportPreview -> imported?.schedules?.firstOrNull()?.id.orEmpty()
+                            else -> ""
                         }
-                        motion.using(null)
-                    },
-                    label = "screen-navigation",
-                ) { screen ->
-                    val active = state.schedules.firstOrNull { it.id == screen.scheduleId }
-                    CompositionLocalProvider(LocalDetailVisibility provides this) {
-                        screenStates.SaveableStateProvider(screen.key) {
-                            when {
-                                screen.route == "main" ->
-                                    when (screen.tab) {
-                                        0 ->
-                                            if (active != null)
-                                                key(
-                                                    active.week1Monday,
-                                                    active.maxWeeks,
-                                                    if (openTimetable) launchSequence else -1,
-                                                ) {
-                                                    Timetable(
-                                                        active,
-                                                        state.preferences,
-                                                        now,
-                                                        ::nav,
-                                                        if (openTimetable) initialDate else null,
-                                                        schedules = state.schedules,
-                                                        onSelectSchedule = { id ->
-                                                            viewedScheduleId = null
-                                                            vm.prefs { it.copy(activeScheduleId = id) }
-                                                        },
-                                                        onUpdateSchedule = { vm.save(it) },
-                                                    )
-                                                }
-                                            else if (state.schedules.isEmpty()) Welcome(vm, ::nav)
-                                            else
-                                                Column(Modifier.padding(24.dp)) {
-                                                    Text(
-                                                        "尚未启用课表",
-                                                        style = MaterialTheme.typography.headlineMedium,
-                                                    )
-                                                    Action("选择启用课表", "已有 ${state.schedules.size} 份课表") {
-                                                        nav("schedules")
-                                                    }
-                                                }
-                                        1 ->
-                                            if (active != null) Courses(active, now, ::nav)
-                                            else
-                                                Column(Modifier.padding(24.dp)) {
-                                                    Action("先选择启用课表") { nav("schedules") }
-                                                }
-                                        else -> Mine(state, ::nav)
-                                    }
-                                screen.route == "notes" -> active?.let { CourseNotesScreen(it, vm) } ?: Missing(::nav)
-                                screen.route == "import" -> ImportEntry({ pick.launch(arrayOf("*/*")) }, ::nav)
-                                screen.route == "document" ->
-                                    document?.let { DocumentReview(vm, it) { nav("preview") } }
-                                        ?: Missing(::nav)
-                                screen.route == "preview" ->
-                                    if (imported != null)
-                                        ImportPreview(vm, imported!!, warnings, ::back) {
-                                            vm.documentSource.value = null
-                                            vm.documentDrafts.clear()
-                                            stack.clear()
-                                            route = "schedules"
-                                        }
-                                    else
-                                        Column(Modifier.padding(24.dp)) {
-                                            Text("导入草稿已清除")
-                                            TextButton(onClick = ::back) { Text("返回") }
-                                        }
-                                screen.route == "school" ->
-                                    SchoolEntry(
-                                        state.preferences,
-                                        vm,
-                                        { url ->
-                                            schoolLauncher.launch(
-                                                Intent(context, SchoolActivity::class.java)
-                                                    .putExtra("url", url)
-                                            )
-                                        },
-                                        { pick.launch(arrayOf("*/*")) },
-                                    )
-                                screen.route == "schedules" -> ScheduleList(state, vm, ::nav)
-                                screen.route == "newSchedule" -> ScheduleEditor(null, vm, ::back)
-                                screen.route.startsWith("schedule:") ->
-                                    state.schedules
-                                        .firstOrNull { it.id == screen.route.substringAfter(':') }
-                                        ?.let { ScheduleEditor(it, vm, ::back) }
-                                screen.route == "semester" ->
-                                    active?.let { ScheduleEditor(it, vm, ::back) } ?: Missing(::nav)
-                                screen.route == "routines" ->
-                                    active?.let { Routines(it) { s -> vm.save(s) } } ?: Missing(::nav)
-                                screen.route == "days" -> active?.let { DayAdjustments(it, vm) } ?: Missing(::nav)
-                                screen.route == "holidays" ->
-                                    active?.let { HolidayScreen(it, vm) } ?: Missing(::nav)
-                                screen.route.startsWith("detail:") ->
-                                    active?.let { s ->
-                                        val parts = screen.route.split(':')
-                                        s.courses
-                                            .firstOrNull { it.id == parts[1] }
-                                            ?.let { Detail(s, it, parts.getOrNull(2), vm, ::nav, ::back, parts.getOrNull(3), parts.getOrNull(4)) }
-                                            ?: Missing(::nav)
-                                    } ?: Missing(::nav)
-                                screen.route.startsWith("edit:") ->
-                                    active?.let { s ->
-                                        val id = screen.route.split(':')[1]
-                                        CourseEditor(s, s.courses.firstOrNull { it.id == id }, vm, ::back)
-                                    } ?: Missing(::nav)
-                                screen.route.startsWith("quick:") ->
-                                    active?.let { s ->
-                                        val parts = screen.route.split(':')
-                                        s.courses
-                                            .firstOrNull { it.id == parts[1] }
-                                            ?.let { parent ->
-                                                CourseEditor(
-                                                    s,
-                                                    null,
-                                                    vm,
-                                                    ::back,
-                                                    parent,
-                                                    if (parts[2] == "exam") "期末考试" else "实验课",
+                        val destination = VanDestination(route, tab, displayed?.id, importKey, stack.size)
+                        AnimatedContent(
+                            targetState = destination,
+                            contentKey = { it.key },
+                            modifier = Modifier.fillMaxSize(),
+                            transitionSpec = {
+                                val detail =
+                                    initialState.route is VanRoute.CourseDetail ||
+                                        targetState.route is VanRoute.CourseDetail
+                                val direction = if (targetState.route == initialState.route) {
+                                    if (targetState.tab > initialState.tab) 1 else -1
+                                } else if (targetState.depth >= initialState.depth) 1 else -1
+                                val motion = if (detail) {
+                                    fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                                } else {
+                                    (fadeIn(tween(180)) + slideInHorizontally(
+                                        tween(260, easing = FastOutSlowInEasing),
+                                        initialOffsetX = { direction * minOf(it / 12, 64) },
+                                    )) togetherWith (fadeOut(tween(120)) + slideOutHorizontally(
+                                        tween(260, easing = FastOutSlowInEasing),
+                                        targetOffsetX = { -direction * minOf(it / 16, 48) },
+                                    ))
+                                }
+                                motion.using(null)
+                            },
+                            label = "screen-navigation",
+                        ) { screen ->
+                            CompositionLocalProvider(LocalDetailVisibility provides this) {
+                                screenStates.SaveableStateProvider(screen.key) {
+                                    VanNavHost(
+                                        VanNavHostEnv(
+                                            destination = screen,
+                                            state = state,
+                                            vm = vm,
+                                            now = now,
+                                            imported = imported,
+                                            warnings = warnings,
+                                            document = document,
+                                            openTimetable = openTimetable,
+                                            initialDate = initialDate,
+                                            launchSequence = launchSequence,
+                                            nav = ::nav,
+                                            back = ::back,
+                                            onSelectSchedule = { id ->
+                                                viewedScheduleId = null
+                                                vm.prefs { it.copy(activeScheduleId = id) }
+                                            },
+                                            onUpdateSchedule = { vm.save(it) },
+                                            onPickFile = { pick.launch(arrayOf("*/*")) },
+                                            onSchoolEntry = { url ->
+                                                schoolLauncher.launch(
+                                                    Intent(context, SchoolActivity::class.java)
+                                                        .putExtra("url", url)
                                                 )
-                                            } ?: Missing(::nav)
-                                    } ?: Missing(::nav)
-                                screen.route.startsWith("adjust:") ->
-                                    active?.let { s ->
-                                        val parts = screen.route.split(':')
-                                        SingleAdjustment(s, parts[1], parts[2], vm, ::back)
-                                    } ?: Missing(::nav)
-                                screen.route == "appearance" -> Appearance(state.preferences, vm, state.active)
-                                screen.route == "notifications" -> NotificationSettings(state.preferences, vm)
-                                screen.route == "band" -> BandScreen(state)
-                                screen.route == "widgets" -> WidgetGallery(state, vm)
-                                screen.route == "backup" ->
-                                    Column(
-                                        Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    ) {
-                                        Action("导出完整备份", "包含全部课表、作息、调课和设置") {
-                                            if (state.schedules.isNotEmpty())
-                                                export.launch("van课表-${LocalDate.now()}.van.json")
-                                            else message = "还没有课表可备份"
-                                        }
-                                        Action("从文件恢复或导入", "先预览，再确认是否覆盖") { pick.launch(arrayOf("*/*")) }
-                                        Action("恢复上一次覆盖前快照", "替换前自动保存在本机") {
-                                            vm.work {
-                                                val text =
-                                                    context
-                                                        .openFileInput("before-restore.van.json")
-                                                        .bufferedReader()
-                                                        .use { it.readText() }
-                                                vm.importData.value = Codec.restore(text)
-                                                vm.importWarnings.value = listOf("这是上一次完整恢复前的本机快照")
-                                                withContext(Dispatchers.Main) { nav("preview") }
-                                            }
-                                        }
-                                        active?.let { s ->
-                                            Action("分享当前课表", s.name) { nav("share:${s.id}") }
-                                        }
-                                        Muted("备份文件不含教务登录Cookie、密码和系统授权。当前不提供自动云同步。")
-                                    }
-                                screen.route.startsWith("share:") ->
-                                    state.schedules
-                                        .firstOrNull { it.id == screen.route.substringAfter(':') }
-                                        ?.let { ShareScreen(it, c.dark, vm) } ?: Missing(::nav)
-                                screen.route == "about" -> About(::nav)
-                                screen.route == "version" -> VersionScreen(::nav)
-                                screen.route == "changelog" -> ChangelogScreen()
-                                else -> Missing(::nav)
+                                            },
+                                            onExportBackup = {
+                                                if (state.schedules.isNotEmpty())
+                                                    export.launch("van课表-${LocalDate.now()}.van.json")
+                                                else message = "还没有课表可备份"
+                                            },
+                                            onRestoreSnapshot = {
+                                                vm.work {
+                                                    val text =
+                                                        context
+                                                            .openFileInput("before-restore.van.json")
+                                                            .bufferedReader()
+                                                            .use { it.readText() }
+                                                    vm.importData.value = Codec.restore(text)
+                                                    vm.importWarnings.value =
+                                                        listOf("这是上一次完整恢复前的本机快照")
+                                                    withContext(Dispatchers.Main) { nav("preview") }
+                                                }
+                                            },
+                                            onImportApplied = {
+                                                vm.documentSource.value = null
+                                                vm.documentDrafts.clear()
+                                                stack.clear()
+                                                route = VanRoute.ScheduleList
+                                            },
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
+                    if (busy)
+                        Column(Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                            if (importProgress.isNotBlank())
+                                Text(
+                                    importProgress,
+                                    Modifier.background(c.surface).fillMaxWidth().padding(8.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                        }
                 }
             }
-            if (busy)
-                Column(Modifier.fillMaxWidth().align(Alignment.TopCenter)) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (importProgress.isNotBlank())
-                        Text(
-                            importProgress,
-                            Modifier.background(c.surface).fillMaxWidth().padding(8.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                }
-        }
-    }
         }
     }
     message?.let { value ->
@@ -568,164 +470,9 @@ fun VanApp(
     }
 }
 
-private fun title(route: String) =
-    when (route.substringBefore(':')) {
-        "import" -> "导入课表"
-        "preview" -> "导入预览"
-        "document" -> "识别结果"
-        "school" -> "教务导入"
-        "schedules" -> "课表管理"
-        "newSchedule" -> "新建课表"
-        "schedule",
-        "semester" -> "学期设置"
-        "routines" -> "作息管理"
-        "days" -> "调课管理"
-        "holidays" -> "节假日设置"
-        "detail" -> "课程详情"
-        "notes" -> "课程备注"
-        "edit" -> "编辑课程"
-        "quick" -> "快捷添加"
-        "adjust" -> "单次调课"
-        "appearance" -> "外观设置"
-        "notifications" -> "提醒与手环"
-        "band" -> "手环课表"
-        "widgets" -> "桌面小组件"
-        "backup" -> "备份与恢复"
-        "share" -> "分享课表"
-        "about" -> "帮助与关于"
-        "version" -> "关于版本"
-        "changelog" -> "历史版本更新"
-        else -> "van课表"
-    }
-
-@Composable
-private fun Missing(nav: (String) -> Unit) {
-    Column(Modifier.padding(24.dp)) {
-        Text("请先启用一份课表，或该数据已经删除。")
-        TextButton(onClick = { nav("schedules") }) { Text("打开课表管理") }
-    }
-}
-
-@Composable
-private fun ShareScreen(s: Schedule, dark: Boolean, vm: VanViewModel) {
-    val context = LocalContext.current
-    var week by rememberSaveable {
-        mutableStateOf(CourseEngine.week(s, LocalDate.now()).coerceIn(1, s.maxWeeks).toString())
-    }
-    var teachers by rememberSaveable { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Action("分享课表数据文件", "对方使用van课表可完整导入") {
-            vm.work { withContext(Dispatchers.Main) { Files.shareData(context, s) } }
-        }
-        Field(week, { week = it }, "分享图片的周次")
-        Toggle("图片显示老师", teachers, { teachers = it })
-        Button(
-            onClick = {
-                val w = week.toIntOrNull()
-                if (w == null || w !in 1..s.maxWeeks) error = "周次超出学期"
-                else
-                    vm.work {
-                        val bytes = Files.image(s, w, dark, teachers)
-                        withContext(Dispatchers.Main) {
-                            Files.share(context, "van课表-第${w}周.png", bytes, "image/png")
-                        }
-                    }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("分享这一周的课表图片")
-        }
-        if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error)
-        Muted("图片包含课程名称、日期、时间和地点，不包含私人备注。")
-    }
-}
-
-@Composable
-private fun WidgetGallery(state: VanState, vm: VanViewModel) {
-    val context = LocalContext.current
-    Column(
-        Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Text("今天的安排，桌面上就能看。", style = MaterialTheme.typography.headlineSmall)
-        Muted("双日两列可独立上下滑动，今日已结束课程不显示。每个小组件可绑定不同课表，点击底部课表名称可以重新设置课表和主题。")
-        Muted("课程和假期保存后自动同步，开始、结束与跨天自动刷新；无需手动点击更新。点击课程或日期打开所绑定的课表。")
-        if (android.os.Build.VERSION.SDK_INT >= 31) {
-            TextButton(
-                onClick = {
-                    context.startActivity(
-                        Intent(
-                            android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                            android.net.Uri.parse("package:${context.packageName}"),
-                        )
-                    )
-                }
-            ) {
-                Text("准时刷新授权")
-            }
-            Muted("允许闹钟与提醒后可准时刷新；未授权或受系统省电限制时可能延迟。")
-        }
-        listOf(
-                "双日课表" to DualWidget::class.java,
-                "今日列表" to TodayWidget::class.java,
-                "下一节课" to NextWidget::class.java,
-            )
-            .forEach { (label, clazz) ->
-                var pinResult by rememberSaveable(label) { mutableStateOf<WidgetPinResult?>(null) }
-                Panel {
-                    Text(label, fontWeight = FontWeight.Medium)
-                    Text(
-                        if (clazz == DualWidget::class.java) "今天 ↕     明天 ↕"
-                        else if (clazz == TodayWidget::class.java) "当前课 → 后续课程 ↕" else "正在上课或最近一节"
-                    )
-                    Button(
-                        onClick = {
-                            pinResult =
-                                requestWidgetPin(
-                                    isSupported = {
-                                        AppWidgetManager.getInstance(context)
-                                            .isRequestPinAppWidgetSupported
-                                    },
-                                    request = {
-                                        AppWidgetManager.getInstance(context)
-                                            .requestPinAppWidget(
-                                                ComponentName(context, clazz), null, null
-                                            )
-                                    },
-                                )
-                        }
-                    ) {
-                        Text("添加到桌面")
-                    }
-                    pinResult?.let { Text(it.message) }
-                }
-            }
-        Panel {
-            Text("手动添加", fontWeight = FontWeight.Medium)
-            Text("长按桌面空白处 → 小组件／添加小部件 → 找到 van课表 → 选择所需组件并拖到桌面。不同桌面的入口名称可能不同。")
-            Text("如果列表中没有 van课表，请检查桌面的组件管理或添加权限。")
-            TextButton(
-                onClick = {
-                    try {
-                        context.startActivity(
-                            Intent(Intent.ACTION_MAIN)
-                                .addCategory(Intent.CATEGORY_HOME)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                    } catch (_: RuntimeException) {
-                        vm.work { vm.messages.emit("无法打开桌面，请按手机的主页键或使用返回桌面手势后手动添加。") }
-                    }
-                }
-            ) {
-                Text("返回桌面手动添加")
-            }
-        }
-        OutlinedButton(
-            onClick = { vm.work { Widgets.updateAll(context) } },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("刷新所有小组件")
-        }
-    }
-}
+/** 目的地只保存 [VanRoute.key]，恢复时通过 [vanRouteOf] 还原，与旧字符串 route 存档兼容。 */
+internal val VanRouteSaver =
+    androidx.compose.runtime.saveable.Saver<VanRoute, String>(
+        save = { it.key },
+        restore = { vanRouteOf(it) },
+    )

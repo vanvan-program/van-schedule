@@ -25,18 +25,19 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.van.timetable.ui.navigation.VanRoute
 import app.van.timetable.ui.nexio.dropdownPanelEntry
 import com.haooz.softglass.shape.ContinuousRoundedRectangle
 
 // Immutable destination identity: outgoing content must not read the new route/tab.
 internal data class VanDestination(
-    val route: String,
+    val route: VanRoute,
     val tab: Int,
     val scheduleId: String?,
     val importKey: String,
     val depth: Int,
 ) {
-    val key: String get() = "$route:$tab:${scheduleId.orEmpty()}:$importKey"
+    val key: String get() = "${route.key}:$tab:${scheduleId.orEmpty()}:$importKey"
 }
 
 // Keep lookahead/shared-bound scopes off the dense timetable's scroll path.
