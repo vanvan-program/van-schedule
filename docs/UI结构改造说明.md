@@ -45,12 +45,14 @@
 
 ```
 app/src/main/kotlin/app/van/timetable/ui/
-├── VanApp.kt                475 行  外壳：主题/壁纸/玻璃/顶栏底栏/返回栈/结果回调
+├── VanApp.kt                474 行  外壳：主题/壁纸/玻璃/顶栏底栏/返回栈/结果回调
 ├── navigation/
 │   ├── VanRoute.kt          201 行  密封目的地 + 解析 + 标题（唯一来源）
 │   └── VanNavHost.kt        181 行  分发层：一行一个目的地，穷尽 when
 ├── timetable/
-│   ├── TimetableScreen.kt   381 行  课表页：锚点、分页、拖拽状态机、整页布局
+│   ├── TimetableScreen.kt   294 行  课表页：整页布局与拖拽状态机
+│   ├── TimetablePagerState.kt 230 行  周/日双模式的 Pager 与选中状态持有者
+│   ├── TimetablePaging.kt    48 行  页面换算纯函数（周↔页、日期↔页、边缘翻页判定）
 │   ├── TimetableHeader.kt   177 行  顶栏 + 课表下拉 + 更多菜单
 │   ├── TimetableChrome.kt   288 行  下一节提示、周备注条、回到本周、拖拽提示与卡片副本
 │   ├── TimetableDialogs.kt   94 行  周次直跳、冲突互换/覆盖
@@ -58,20 +60,47 @@ app/src/main/kotlin/app/van/timetable/ui/
 │   ├── WeekGrid.kt          476 行  周网格、拖拽落点计算、卡片
 │   ├── TimetablePager.kt    127 行  分页容器、手势归属守卫
 │   └── DayListScreen.kt      93 行  日列表（含上午/下午/晚上分组）
+├── CourseDetailScreen.kt    263 行  课程详情（含关联课程分区）
+├── CourseEditorScreen.kt    305 行  课程新建／编辑，含时段表单 SlotForm 与周次选择
+├── ScheduleEditorScreen.kt   75 行  学期设置（新建与编辑共用）
+├── AdjustmentScreens.kt     256 行  调课管理、单次调课与星期／节次输入
+├── MineScreen.kt             68 行  「我的」设置分组入口
+├── ScheduleListScreen.kt    124 行  课表管理
+├── AppearanceScreen.kt      324 行  外观设置（材质、配色、壁纸、卡片参数）
+├── SettingsInfoScreens.kt   164 行  提醒与手环、帮助与关于
 ├── MainScreens.kt           125 行  只剩 Welcome 与 Courses
 ├── BackupScreen.kt           35 行  备份与恢复
 ├── ShareScreen.kt            51 行  分享课表
 ├── WidgetGalleryScreen.kt   110 行  桌面小组件说明
-└── TimetableEntry.kt         33 行  过渡用转发入口（见 §4.4）
+├── TimetableEntry.kt         33 行  过渡用转发入口（见 §4.4）
+├── EditorScreens.kt / SettingsScreens.kt    迁移索引（见 §4.4）
+└── WeekGrid.kt / TimetablePager.kt          迁移索引（见 §4.4）
 ```
 
 | 文件 | 改造前 | 改造后 |
 | --- | --- | --- |
-| `VanApp.kt` | 725 行（含导航、IO、分享、小组件） | 475 行（只做外壳） |
+| `VanApp.kt` | 725 行（含导航、IO、分享、小组件） | 474 行（只做外壳） |
 | `MainScreens.kt` | 1020 行 | 125 行 |
-| `Timetable` 单函数 | 670 行 | 381 行（其余拆到 4 个文件） |
+| `Timetable` 单函数 | 670 行 | 294 行（其余拆到 7 个文件） |
+| `EditorScreens.kt` | 844 行 | 拆成 4 个文件，最长 305 行 |
+| `SettingsScreens.kt` | 575 行 | 拆成 4 个文件，最长 324 行 |
 | 路由定义 | 字符串，参数手写解析 | 密封类型，解析集中在 `vanRouteOf` |
 | 屏幕分发 | 与标题表两套 `when` | `VanNavHost` 一处穷尽 `when`，标题随目的地 |
+
+### 3.1 第二轮：状态持有者与大文件拆分
+
+`Timetable` 拆完后仍有 383 行，其中一半是两个 Pager 与「切模式该跳到哪一页」的换算。第二轮继续按 Nexio 的
+`PageSwitchState` 思路处理：
+
+- **`TimetablePaging`（48 行，纯函数）**：周次↔页面、日期↔日分页、某个星期几在指定周的日期、边缘翻页判定。
+  不引用 Compose 与课表数据，`TimetablePagingTest` 的 12 项 JVM 测试覆盖首尾钳制、跨月、单周课表与零宽视口。
+- **`TimetablePagerState`（230 行，`@Stable`）**：持有两个 Pager 与选中状态，把「切日列表 / 前后一天 / 指定周 / 回到今天 / 模式切换 / 拖拽边缘翻页」翻译成目标页，
+  并且每次操作都取消上一次翻页任务（原先是内联的 `navigationJob`）。
+  保存键沿用 0.4.0：`daily`、`selectedWeekday(scheduleId)`、`weekSelectedDate(scheduleId)`、`dayAnchor(scheduleId)`。
+- **`TimetableScreen`（294 行）**：只剩整页布局与拖拽状态机，不再出现 `weekPager.currentPage` 之类的换算。
+
+编辑与设置两个文件按屏幕切开，**包路径保持 `app.van.timetable.ui` 不变**，因此导航宿主、androidTest 与全部调用点零改动；
+切分用脚本按行区间搬运，代码行与原文件逐行一致（811 行 / 524 行，已比对）。
 
 ---
 
@@ -92,10 +121,11 @@ app/src/main/kotlin/app/van/timetable/ui/
 `VanNavHostEnv` 显式传入 `state` / `vm` / `now` / 导入草稿 / 以及 5 个回调（选文件、教务入口、导出备份、恢复快照、导入落地）。
 文件读写、`ActivityResultLauncher`、`Stack.clear()` 全部留在 `VanApp`。屏幕只发意图。
 
-### 4.4 过渡期保留的两个入口
+### 4.4 过渡期保留的旧路径
 
 - `TimetableEntry.kt`：`ui.Timetable` 转发到 `ui.timetable.Timetable`，让导航宿主与 `Version023UiTest` 不必改 import。
-- `ui/WeekGrid.kt`、`ui/TimetablePager.kt`：内容已迁到 `ui/timetable/`，只留迁移说明注释，避免旧 import 静默指向过期实现。调用点统一后可以整份删除。
+- `ui/WeekGrid.kt`、`ui/TimetablePager.kt`、`ui/EditorScreens.kt`、`ui/SettingsScreens.kt`：内容已迁走，只留迁移说明注释，
+  避免旧 import 静默指向过期实现。这四个文件都可以在调用点统一后整份删除。
 
 ---
 
@@ -147,8 +177,11 @@ cd .\van-timetable
 | 任务 | 结果 |
 | --- | --- |
 | `:app:compileDebugKotlin` | 通过 |
-| `:core:domain:test` | 通过（16 个测试类，无失败） |
-| `:app:testDebugUnitTest` | 通过（3 个测试类，无失败） |
+| `:core:domain:test` | 通过（16 个测试类 / 104 项，无失败） |
+| `:app:testDebugUnitTest` | 通过（5 个测试类 / 27 项，无失败；含 `TimetablePagingTest` 12 项与 `VanRouteTest` 5 项） |
+| `:app:compileDebugAndroidTestKotlin` | 通过（31 个 instrumentation 类只编译不执行） |
+| `:app:lintDebug` | 0 错误 / 87 警告 / 1 提示（两轮改造前后同基线） |
+| 拆分保真 | 新文件去掉头部后按序拼接，与原文件代码行逐行一致（编辑器 811 行、设置 524 行） |
 
 **未验证**：instrumentation 测试（`app/src/androidTest`，31 个类）只做了编译检查，没有在设备或模拟器上执行；真机上的转场、拖拽与玻璃表现需要人工过一遍。
 
@@ -156,7 +189,8 @@ cd .\van-timetable
 
 ## 8. 后续建议
 
-1. 把 `TimetableScreen` 里的 Pager 状态抽成 `TimetablePagerState` 持有者（对应 Nexio 的 `PageSwitchState`），可让 381 行再降一半，同时让「周/日双模式」可单测。
-2. `EditorScreens.kt`（833 行）与 `SettingsScreens.kt`（563 行）尚未拆分，可按同样方式切成 `editor/` 与 `settings/` 两个包。
-3. 把 `nav("...")` 调用点统一切到 `VanRoute` 常量（或 `VanRoute.CourseEdit(id)` 构造函数），然后删除 `TimetableEntry.kt` 与两个占位文件。
+1. ~~把 `TimetableScreen` 里的 Pager 状态抽成 `TimetablePagerState` 持有者~~ —— 已做（见 §3.1，381 → 294 行，换算逻辑由 12 项 JVM 测试覆盖）。
+2. ~~拆分 `EditorScreens.kt`（844 行）与 `SettingsScreens.kt`（575 行）~~ —— 已做（同包拆成 4 + 4 个文件，调用点零改动）。
+3. 把 `nav("...")` 调用点统一切到 `VanRoute` 常量（或 `VanRoute.CourseEdit(id)` 构造函数），然后删除 `TimetableEntry.kt` 与四个迁移索引文件。
 4. 转场若要继续对齐 Nexio，方向是「整栈常驻 + 单一进度 + `Modifier.layout` 视差」，而不是给 `AnimatedContent` 加更多动画参数。
+5. `AppearanceScreen.kt`（324 行）仍是最大的单屏，内部按「材质／配色／壁纸／卡片」再拆成 4 个面板是下一步；它的状态都在 `Preferences` 上，拆分不需要动数据流。

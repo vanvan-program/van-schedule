@@ -63,30 +63,12 @@ fun Timetable(
         remember(s.id, anchor, p.autoSkipEmptyWeekend, p.globalDayOverrides) {
             CourseEngine.effectiveDisplayWeek(s, anchor, p.autoSkipEmptyWeekend, p.globalDayOverrides)
         }
-    var daily by rememberSaveable { mutableStateOf(false) }
-    var selectedWeekday by rememberSaveable(s.id) { mutableIntStateOf(anchor.dayOfWeek.value - 1) }
-    var weekSelectedDate by rememberSaveable(s.id) { mutableStateOf(anchor.toString()) }
-    val dayAnchor by rememberSaveable(s.id) { mutableLongStateOf(anchor.toEpochDay()) }
-    val weekPager =
-        key(s.id, s.week1Monday, s.maxWeeks) {
-            rememberPagerState(initialPage = initialWeek - 1) { s.maxWeeks }
-        }
-    val dayPager =
-        key(s.id) {
-            rememberPagerState(initialPage = DAY_PAGER_ANCHOR) { DAY_PAGER_COUNT }
-        }
-    val dayDate = LocalDate.ofEpochDay(dayAnchor + dayPager.currentPage - DAY_PAGER_ANCHOR)
-    val week =
-        if (daily) CourseEngine.week(s, dayDate).coerceIn(1, s.maxWeeks)
-        else weekPager.currentPage + 1
-    val monday = LocalDate.parse(s.week1Monday).plusWeeks((week - 1).toLong())
-    val selectedDate = if (daily) dayDate.toString() else weekSelectedDate
-    val scope = rememberCoroutineScope()
-    var navigationJob by remember { mutableStateOf<Job?>(null) }
-    fun animateNavigation(action: suspend () -> Unit) {
-        navigationJob?.cancel()
-        navigationJob = scope.launch { action() }
-    }
+    val pager = rememberTimetablePagerState(s, anchor, initialWeek)
+    val daily = pager.daily
+    val week = pager.week
+    val monday = pager.monday
+    val selectedDate = pager.selectedDate
+    val dayDate = pager.dayDate
     val gridPan = remember(s.id) { MutableStateFlow(0) }
     val canCollapseGaps = remember(s) { GridTimeline.canCollapseGaps(s) }
     val density = LocalDensity.current
@@ -94,81 +76,22 @@ fun Timetable(
     val dragMetrics = remember(s.id) { GridDragMetrics() }
     var dragging by remember { mutableStateOf<DraggingCourse?>(null) }
     var pendingConflict by remember { mutableStateOf<PendingDragConflict?>(null) }
-    LaunchedEffect(weekPager) {
-        snapshotFlow { weekPager.currentPage }
-            .collect { page ->
-                if (
-                    !daily &&
-                        CourseEngine.week(s, LocalDate.parse(weekSelectedDate))
-                            .coerceIn(1, s.maxWeeks) != page + 1
-                ) {
-                    weekSelectedDate =
-                        CourseEngine.dateAt(s, page + 1, selectedWeekday + 1).toString()
-                }
-            }
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.weekPager.currentPage }.collect(pager::syncSelectedDateWithPage)
     }
     val edgeMarginPx = with(density) { 32.dp.toPx() }
     LaunchedEffect(dragging != null, dragging?.fingerInRoot) {
         val current = dragging ?: return@LaunchedEffect
-        val relX = current.fingerInRoot.x - dragMetrics.viewportPosInRoot.x
-        val vw = dragMetrics.viewportWidthPx
-        if (vw <= 0f) return@LaunchedEffect
-        val dir =
-            when {
-                relX < edgeMarginPx && weekPager.currentPage > 0 -> -1
-                relX > vw - edgeMarginPx && weekPager.currentPage < s.maxWeeks - 1 -> 1
-                else -> 0
-            }
-        if (dir != 0) {
-            delay(500L)
-            val targetPage = (weekPager.currentPage + dir).coerceIn(0, s.maxWeeks - 1)
-            if (targetPage != weekPager.currentPage) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                weekPager.animateScrollToPage(targetPage)
-            }
-        }
-    }
-    fun dayPage(date: LocalDate) =
-        (DAY_PAGER_ANCHOR.toLong() + date.toEpochDay() - dayAnchor)
-            .coerceIn(0, DAY_PAGER_COUNT.toLong() - 1)
-            .toInt()
-    fun showDay(date: LocalDate) {
-        navigationJob?.cancel()
-        // Request the starting position before composing the previously hidden pager.
-        // scrollToPage would wait for its first layout and prevent the mode switch.
-        dayPager.requestScrollToPage(dayPage(date))
-        daily = true
-    }
-    fun moveDate(days: Long) {
-        animateNavigation { dayPager.animateScrollToPage(dayPage(dayDate.plusDays(days))) }
-    }
-    fun moveWeek(target: Int) {
-        val targetWeek = target.coerceIn(1, s.maxWeeks)
-        animateNavigation {
-            if (daily) {
-                val date =
-                    LocalDate.parse(s.week1Monday)
-                        .plusWeeks((targetWeek - 1).toLong())
-                        .plusDays((dayDate.dayOfWeek.value - 1).toLong())
-                dayPager.animateScrollToPage(dayPage(date))
-            } else {
-                weekSelectedDate =
-                    CourseEngine.dateAt(s, targetWeek, selectedWeekday + 1).toString()
-                weekPager.animateScrollToPage(targetWeek - 1)
-            }
-        }
-    }
-    fun jumpToday() {
-        animateNavigation {
-            selectedWeekday = dateNow.dayOfWeek.value - 1
-            if (daily) dayPager.animateScrollToPage(dayPage(dateNow))
-            else weekPager.animateScrollToPage(actualWeek.coerceIn(1, s.maxWeeks) - 1)
-            weekSelectedDate = dateNow.toString()
-        }
+        pager.autoPageTowardEdge(
+            relativeX = current.fingerInRoot.x - dragMetrics.viewportPosInRoot.x,
+            viewportWidthPx = dragMetrics.viewportWidthPx,
+            edgePx = edgeMarginPx,
+            onPaging = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) },
+        )
     }
     val showReturn =
         if (daily) dayDate != dateNow
-        else weekPager.currentPage != actualWeek.coerceIn(1, s.maxWeeks) - 1
+        else pager.weekPager.currentPage != actualWeek.coerceIn(1, s.maxWeeks) - 1
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().padding(horizontal = 8.dp),
@@ -179,21 +102,11 @@ fun Timetable(
                 week = week,
                 schedules = schedules,
                 daily = daily,
-                onWeekSelected = ::moveWeek,
-                onPrevWeek = { moveWeek(week - 1) },
-                onNextWeek = { moveWeek(week + 1) },
-                onToday = ::jumpToday,
-                onToggleMode = {
-                    if (daily) {
-                        navigationJob?.cancel()
-                        selectedWeekday = dayDate.dayOfWeek.value - 1
-                        weekSelectedDate = dayDate.toString()
-                        weekPager.requestScrollToPage(
-                            CourseEngine.week(s, dayDate).coerceIn(1, s.maxWeeks) - 1
-                        )
-                        daily = false
-                    } else showDay(LocalDate.parse(selectedDate))
-                },
+                onWeekSelected = pager::moveWeek,
+                onPrevWeek = { pager.moveWeek(week - 1) },
+                onNextWeek = { pager.moveWeek(week + 1) },
+                onToday = { pager.jumpToday(dateNow) },
+                onToggleMode = pager::toggleMode,
                 onSelectSchedule = onSelectSchedule,
                 nav = nav,
             )
@@ -203,7 +116,7 @@ fun Timetable(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(
                         onClick = {
-                            moveDate(-1)
+                            pager.moveDate(-1)
                         }
                     ) {
                         Text("前一天")
@@ -215,18 +128,18 @@ fun Timetable(
                     )
                     TextButton(
                         onClick = {
-                            moveDate(1)
+                            pager.moveDate(1)
                         }
                     ) {
                         Text("后一天")
                     }
                 }
                 Row(Modifier.weight(1f)) {
-                    TimetablePager(dayPager, Modifier.weight(1f).fillMaxHeight().testTag("day-list")) {
+                    TimetablePager(pager.dayPager, Modifier.weight(1f).fillMaxHeight().testTag("day-list")) {
                         page ->
                         DayList(
                             s,
-                            LocalDate.ofEpochDay(dayAnchor + page - DAY_PAGER_ANCHOR),
+                            pager.dateOfDayPage(page),
                             now,
                             nav,
                             Modifier.fillMaxSize(),
@@ -234,13 +147,13 @@ fun Timetable(
                         )
                     }
                     Box(Modifier.width(44.dp).fillMaxHeight(), contentAlignment = Alignment.CenterEnd) {
-                        if (showReturn) ReturnToTodayButton(true, Modifier) { jumpToday() }
+                        if (showReturn) ReturnToTodayButton(true, Modifier) { pager.jumpToday(dateNow) }
                     }
                 }
             } else {
                 Row(Modifier.weight(1f)) {
                     TimetablePager(
-                        weekPager,
+                        pager.weekPager,
                         Modifier.weight(1f).fillMaxHeight().testTag("week-viewport"),
                         userScrollEnabled = dragging == null,
                     ) { page ->
@@ -250,7 +163,7 @@ fun Timetable(
                             page + 1,
                             dateNow,
                             gridPan,
-                            weekPager.settledPage == page,
+                            pager.weekPager.settledPage == page,
                             canCollapseGaps,
                             nav,
                             now = now,
@@ -287,7 +200,7 @@ fun Timetable(
                                 val cur = dragging
                                 dragging = null
                                 if (cur != null) {
-                                    val targetWeek = weekPager.currentPage + 1
+                                    val targetWeek = pager.weekPager.currentPage + 1
                                     val sameSlot =
                                         targetWeek == cur.fromWeek &&
                                             cur.targetDay == cur.occurrence.session.day &&
@@ -332,17 +245,17 @@ fun Timetable(
                             },
                             onDragCancel = { dragging = null },
                         ) { date ->
-                            selectedWeekday = date.dayOfWeek.value - 1
-                            showDay(date)
+                            pager.selectWeekday(date)
+                            pager.showDay(date)
                         }
                     }
                     Box(Modifier.width(44.dp).fillMaxHeight(), contentAlignment = Alignment.CenterEnd) {
-                        if (showReturn) ReturnToTodayButton(false, Modifier) { jumpToday() }
+                        if (showReturn) ReturnToTodayButton(false, Modifier) { pager.jumpToday(dateNow) }
                     }
                 }
             }
             WeekNotesBar(s, week, monday, p)
-            if (p.showWeekProgress) WeekScrubber(week, s.maxWeeks, actualWeek, ::moveWeek)
+            if (p.showWeekProgress) WeekScrubber(week, s.maxWeeks, actualWeek) { pager.moveWeek(it) }
         }
         DragHintChip(dragging, week)
         DragPreviewCard(dragging, p, dragMetrics.viewportPosInRoot)
