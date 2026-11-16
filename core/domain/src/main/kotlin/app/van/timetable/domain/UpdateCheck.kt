@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.van.timetable.domain
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
 /**
  * 一条可比较的发布信息。数据来自 GitHub 的公开发布页，不包含任何用户数据。
  *
@@ -10,6 +14,7 @@ package app.van.timetable.domain
  * @param notes 纯文本更新说明，可能为空（只拿到发布页跳转时没有说明）
  * @param publishedAt 发布时间，保留原始文本，例如 2026-11-11T05:08:12Z
  * @param pageUrl 发布页地址，用于打开下载与更新说明
+ * @param apk 随发布附带的安装包；只有 GitHub API 才提供，发布动态与跳转页没有这一项
  */
 data class AppRelease(
     val version: String,
@@ -18,6 +23,20 @@ data class AppRelease(
     val notes: String,
     val publishedAt: String,
     val pageUrl: String,
+    val apk: ApkAsset? = null,
+)
+
+/**
+ * 发布里附带的安装包。
+ *
+ * @param sha256 GitHub 给出的文件摘要（小写十六进制），用于下载后核对；早期发布可能没有
+ * @param size 文件大小（字节），只在下载进度无法从响应头取得时兜底
+ */
+data class ApkAsset(
+    val name: String,
+    val url: String,
+    val sha256: String? = null,
+    val size: Long? = null,
 )
 
 /**
@@ -26,6 +45,47 @@ data class AppRelease(
  * 这里不发起网络请求，抓取由 app 模块负责，因此规则可以在 JVM 单元测试中直接验证。
  */
 object UpdateCheck {
+    const val REPO = "vanvan-program/van-schedule"
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * 解析 GitHub API 的 `releases/latest` 响应。
+     *
+     * 相比发布动态，这里多出安装包直链与 SHA-256，应用内更新靠它直接下载；
+     * 解析失败返回 null，由调用方退回发布动态或发布页。
+     */
+    fun parseLatestReleaseJson(raw: String): AppRelease? {
+        val dto =
+            runCatching { json.decodeFromString<ApiRelease>(raw) }.getOrNull() ?: return null
+        val tag = dto.tagName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val version = normalizeVersion(tag) ?: return null
+        val pageUrl =
+            dto.htmlUrl?.trim()?.takeIf { it.isNotBlank() }
+                ?: "https://github.com/$REPO/releases/tag/$tag"
+        return AppRelease(
+            version = version,
+            tag = tag,
+            title = dto.name?.trim()?.takeIf { it.isNotBlank() } ?: "van课表 $version",
+            notes = htmlToText(dto.body.orEmpty()),
+            publishedAt = dto.publishedAt?.trim().orEmpty(),
+            pageUrl = pageUrl,
+            apk = pickApk(dto.assets.mapNotNull { it.toAsset() }),
+        )
+    }
+
+    /** 优先 arm64 安装包（本应用只发 arm64），没有时取第一个 APK，忽略源码 ZIP。 */
+    fun pickApk(assets: List<ApkAsset>): ApkAsset? {
+        val apks = assets.filter { it.url.isNotBlank() && it.name.endsWith(".apk", ignoreCase = true) }
+        return apks.firstOrNull { it.name.contains("arm64", ignoreCase = true) } ?: apks.firstOrNull()
+    }
+
+    /** 把 `sha256:abcd…` 形式的摘要规范化成 64 位小写十六进制；无法识别时返回 null。 */
+    fun normalizeSha256(raw: String?): String? {
+        val text = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val value = text.substringAfter(':', text).trim().lowercase()
+        return value.takeIf { it.length == 64 && it.all { c -> c in '0'..'9' || c in 'a'..'f' } }
+    }
     /**
      * 把发布标签或版本号文本规范成可比较的点分数字，例如 `v0.3.3` 转成 `0.3.3`。
      * 无法识别时返回 null，调用方按“没有拿到版本号”处理，不要猜测。
@@ -171,4 +231,28 @@ object UpdateCheck {
 
     private fun versionParts(version: String): List<Int>? =
         normalizeVersion(version)?.split('.')?.map(String::toInt)
+}
+
+@Serializable
+private data class ApiRelease(
+    @SerialName("tag_name") val tagName: String? = null,
+    val name: String? = null,
+    val body: String? = null,
+    @SerialName("published_at") val publishedAt: String? = null,
+    @SerialName("html_url") val htmlUrl: String? = null,
+    val assets: List<ApiAsset> = emptyList(),
+)
+
+@Serializable
+private data class ApiAsset(
+    val name: String? = null,
+    @SerialName("browser_download_url") val url: String? = null,
+    val size: Long? = null,
+    val digest: String? = null,
+) {
+    fun toAsset(): ApkAsset? {
+        val fileName = name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val link = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return ApkAsset(fileName, link, UpdateCheck.normalizeSha256(digest), size)
+    }
 }

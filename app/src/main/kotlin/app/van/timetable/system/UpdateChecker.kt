@@ -18,8 +18,9 @@ import javax.net.ssl.SSLException
  * 不上传课表、账号、设备标识或检查记录，也不在后台自动请求。
  */
 object UpdateChecker {
-    const val REPO = "vanvan-program/van-schedule"
+    const val REPO = UpdateCheck.REPO
     const val RELEASES_URL = "https://github.com/$REPO/releases"
+    private const val API_LATEST_URL = "https://api.github.com/repos/$REPO/releases/latest"
     private const val FEED_URL = "https://github.com/$REPO/releases.atom"
     private const val LATEST_URL = "https://github.com/$REPO/releases/latest"
     private const val CONNECT_TIMEOUT_MS = 8_000
@@ -55,6 +56,16 @@ object UpdateChecker {
     }
 
     private fun latestRelease(currentVersion: String): AppRelease {
+        // 先问 GitHub API：只有这里能拿到安装包直链与 SHA-256，应用内更新要用。
+        // 未登录时每小时有次数上限，超了就退回发布动态。
+        try {
+            val json = request(API_LATEST_URL, "application/vnd.github+json", currentVersion)
+            UpdateCheck.parseLatestReleaseJson(json)?.let { return it }
+        } catch (e: InterruptedException) {
+            throw e
+        } catch (e: Exception) {
+            // 继续走下面的公开渠道，不把这一次失败直接抛给用户。
+        }
         var feedError: Exception? = null
         // 发布动态不需要授权，也没有 GitHub API 的按小时限流，优先使用。
         try {

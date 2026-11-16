@@ -2,8 +2,6 @@
 package app.van.timetable.ui
 
 import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -23,6 +21,8 @@ import androidx.core.net.toUri
 import app.van.timetable.domain.AppRelease
 import app.van.timetable.domain.UpdateCheck
 import app.van.timetable.system.UpdateChecker
+import app.van.timetable.system.UpdateInstaller
+import androidx.compose.ui.Alignment
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -39,9 +39,48 @@ fun VersionScreen(nav: (String) -> Unit) {
     val clock = remember { DateTimeFormatter.ofPattern("HH:mm") }
     var state by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var dialog by remember { mutableStateOf(false) }
-    var copied by remember { mutableStateOf(false) }
     var openFailed by remember { mutableStateOf(false) }
+    var downloadPercent by remember { mutableStateOf<Int?>(null) }
+    var installNote by remember { mutableStateOf<String?>(null) }
+    var needsPermission by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    /** 点击「立即更新」：应用内下载安装包，再交给系统安装器覆盖安装。 */
+    fun startUpdate(release: AppRelease) {
+        dialog = false
+        if (downloadPercent != null) return
+        val asset = release.apk
+        if (asset == null) {
+            installNote = "这次发布没有附带安装包，只能改用下面的浏览器下载。"
+            return
+        }
+        if (!UpdateInstaller.canInstall(context)) {
+            needsPermission = true
+            installNote = null
+            return
+        }
+        needsPermission = false
+        installNote = null
+        downloadPercent = 0
+        scope.launch {
+            val result =
+                withContext(Dispatchers.IO) {
+                    UpdateInstaller.download(context, asset, release.version) { percent ->
+                        scope.launch(Dispatchers.Main) { downloadPercent = percent }
+                    }
+                }
+            downloadPercent = null
+            when (result) {
+                is UpdateInstaller.Download.Ready -> {
+                    val opened = UpdateInstaller.install(context, result.file)
+                    installNote =
+                        if (opened) "已打开系统安装界面，按提示点「安装」就能完成更新，课表和设置会保留。"
+                        else "没能调起系统安装界面，请确认已允许安装未知应用，或改用浏览器下载。"
+                }
+                is UpdateInstaller.Download.Failed -> installNote = result.message
+            }
+        }
+    }
 
     fun openPage(url: String): Boolean {
         if (url.isBlank()) return false
@@ -58,7 +97,6 @@ fun VersionScreen(nav: (String) -> Unit) {
     fun check() {
         if (state is UpdateState.Checking) return
         state = UpdateState.Checking
-        copied = false
         openFailed = false
         scope.launch {
             val result = withContext(Dispatchers.IO) { UpdateChecker.check(info.name) }
@@ -87,7 +125,7 @@ fun VersionScreen(nav: (String) -> Unit) {
         }
         Panel(Modifier.testTag("update-panel")) {
             Text("检查版本更新", fontWeight = FontWeight.Medium)
-            Muted("点击后联网读取 GitHub 发布页的最新版本与更新说明；不上传课表、账号或设备信息。")
+            Muted("点击后联网读取 GitHub 发布页的最新版本与更新说明；有新版本时可以直接在应用内下载，由系统弹窗确认安装。不上传课表、账号或设备信息。")
             Button(
                 onClick = { check() },
                 enabled = state !is UpdateState.Checking,
@@ -158,22 +196,47 @@ fun VersionScreen(nav: (String) -> Unit) {
                     } else {
                         Muted("这条更新说明只包含版本号，请到发布页查看完整内容。")
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { openFailed = !openPage(release.pageUrl) }) { Text("打开下载页") }
-                        TextButton(
-                            onClick = {
-                                val clipboard = context.getSystemService(ClipboardManager::class.java)
-                                clipboard?.setPrimaryClip(
-                                    ClipData.newPlainText("van课表下载地址", release.pageUrl)
-                                )
-                                copied = true
-                            }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            onClick = { startUpdate(release) },
+                            enabled = downloadPercent == null && release.apk != null,
+                            modifier = Modifier.testTag("install-update"),
                         ) {
-                            Text(if (copied) "链接已复制" else "复制下载链接")
+                            if (downloadPercent != null) {
+                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(10.dp))
+                                Text("正在下载 ${downloadPercent}%")
+                            } else {
+                                Text("立即更新")
+                            }
+                        }
+                        TextButton(onClick = { openFailed = !openPage(release.pageUrl) }) {
+                            Text("改用浏览器下载")
                         }
                     }
+                    if (downloadPercent != null) {
+                        LinearProgressIndicator(
+                            progress = { (downloadPercent ?: 0) / 100f },
+                            modifier = Modifier.fillMaxWidth().testTag("update-progress"),
+                        )
+                    }
+                    if (release.apk == null) {
+                        Muted("这次发布没有附带安装包，应用内更新不可用，请用浏览器下载。")
+                    }
+                    if (needsPermission) {
+                        Text("需要先允许安装未知应用", fontWeight = FontWeight.Medium)
+                        Muted("Android 要求由你为 van课表单独开启这项权限；开启后回到这里再点「立即更新」。")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { UpdateInstaller.openInstallSettings(context) }) { Text("去开启") }
+                            TextButton(onClick = { needsPermission = false }) { Text("取消") }
+                        }
+                    }
+                    if (installNote != null) Muted(installNote!!)
+                    else if (!needsPermission) Muted("下载后由系统弹窗确认安装；包名与原签名不变，课表和设置会保留。")
                     if (openFailed) Muted("没有打开可用的浏览器，请手动访问：${release.pageUrl}")
-                    else Muted("下载 APK 后覆盖安装；包名与原签名不变时课表和设置会保留，App 不会自动安装或静默下载。")
                 }
             }
         }
@@ -181,7 +244,7 @@ fun VersionScreen(nav: (String) -> Unit) {
         Action("开源与第三方许可", "查看本地许可声明") {
             context.startActivity(Intent(context, app.van.timetable.LicenseActivity::class.java))
         }
-        Muted("检查更新只在点击时发起，本机不保存检查结果，也不在后台自动联网。")
+        Muted("检查更新只在点击时发起，本机不保存检查结果，也不在后台自动联网；下载的安装包只放在缓存目录，校验签名后才交给系统安装。")
     }
 
     if (dialog) {
@@ -198,17 +261,17 @@ fun VersionScreen(nav: (String) -> Unit) {
                             Text(release.notes.lines().take(12).joinToString("\n"))
                         }
                         Spacer(Modifier.height(8.dp))
-                        Muted("下载后覆盖安装即可保留课表与设置。")
+                        Muted("下载后由系统弹窗确认安装，课表与设置会保留。")
                     }
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
                             dialog = false
-                            openFailed = !openPage(release.pageUrl)
+                            startUpdate(release)
                         }
                     ) {
-                        Text("打开下载页")
+                        Text("立即更新")
                     }
                 },
                 dismissButton = { TextButton(onClick = { dialog = false }) { Text("稍后") } },
