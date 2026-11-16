@@ -47,32 +47,36 @@ data class VanColors(
 private val light =
     VanColors(
         false,
-        Color(0xFFE8F2FC),
-        Color(0xFFF8F9FE),
+        // 顶栏与页面同色：Nexio 的主课表没有单独的彩色标题带，整页是平的近白灰
+        Color(0xFFF1F3F7),
+        Color(0xFFF1F3F7),
         Color.White,
-        Color(0xFF18233A),
-        Color(0xFF67748A),
-        Color(0xFF3874F6),
+        Color(0xFF17202B),
+        Color(0xFF6E7887),
+        Color(0xFF2F6FE4),
         CoursePalette.light.map { Color(it) },
-        Color(0xFFD4D7DE),
+        Color(0xFFDFE3EA),
         Color(0xFF55565A),
-        Color(0xFFF0F0F0),
+        Color(0xFFE7EAEF),
     )
 private val dark =
     VanColors(
         true,
-        Color(0xFF1B2E4A),
-        Color(0xFF111A2A),
-        Color(0xFF1D2A40),
-        Color(0xFFEFF3FA),
-        Color(0xFFB2BED1),
-        Color(0xFF91B5FF),
+        Color(0xFF101720),
+        Color(0xFF101720),
+        Color(0xFF1A222E),
+        Color(0xFFEAF0F8),
+        Color(0xFF97A3B4),
+        Color(0xFF8FB4FF),
         CoursePalette.dark.map { Color(it) },
-        Color(0xFF344155),
+        Color(0xFF2C3644),
         Color(0xFFC1CBDA),
-        Color(0xFF323232),
+        Color(0xFF232B37),
     )
 val LocalVan = staticCompositionLocalOf { light }
+
+/** 柔和卡片铺底的不透明度：课程色压在页面底色上的比例，网格与日列表共用。 */
+const val PastelFillAlpha = 0.26f
 
 fun VanColors.courseColor(course: app.van.timetable.domain.Course): Color {
     if (course.customColor != null) return Color(course.customColor!!)

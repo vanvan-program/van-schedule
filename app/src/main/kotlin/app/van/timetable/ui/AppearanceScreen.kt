@@ -21,6 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -103,7 +105,8 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
             val cardStyle = remember(p, colors.dark, sampleCourseColor) {
                 p.toCardSoftGlassStyle(colors.dark, sampleCourseColor)
             }
-            val glassOn = p.materialLevel != "none" && materialSupported
+            val pastelPreview = p.cardStyle != "solid"
+            val glassOn = p.materialLevel != "none" && materialSupported && !pastelPreview
             val cardModifier =
                 if (glassOn) {
                     Modifier.vanSoftGlassBackdrop(
@@ -115,7 +118,12 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
                     )
                 } else {
                     Modifier.background(
-                        sampleCourseColor.copy(alpha = if (p.materialLevel == "none") 1f else p.cardOpacity),
+                        sampleCourseColor.copy(
+                            alpha =
+                                if (pastelPreview) PastelFillAlpha
+                                else if (p.materialLevel == "none") 1f
+                                else p.cardOpacity
+                        ),
                         cardShape,
                     )
                 }
@@ -126,9 +134,19 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
                     else -> Alignment.Center
                 }
             val textColor =
-                when (p.cardTextColorMode) {
-                    "light" -> Color.White
-                    "dark" -> Color(0xFF142036)
+                when {
+                    pastelPreview ->
+                        Color(
+                            CoursePalette.pastelTextArgb(
+                                sampleCourseColor.toArgb().toLong() and 0xFFFFFFFFL,
+                                sampleCourseColor.copy(alpha = PastelFillAlpha)
+                                    .compositeOver(colors.background)
+                                    .toArgb().toLong() and 0xFFFFFFFFL,
+                                colors.dark,
+                            )
+                        )
+                    p.cardTextColorMode == "light" -> Color.White
+                    p.cardTextColorMode == "dark" -> Color(0xFF142036)
                     else -> courseTextColor(sampleCourseColor)
                 }
             Box(

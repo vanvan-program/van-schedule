@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>van课表 · Nexio 风格预览 v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #F1F3F7;
+    --text: #17202B;
+    --muted: #6E7887;
+    --accent: #2F6FE4;
+    --band: #E7EAEF;
+    --gutter: 36px;
+    --row: 56px;
+    --bandh: 24px;
+    --side: 10px;
+  }
+  html, body { background: #fff; }
+  body {
+    width: 390px; height: 844px; background: var(--bg);
+    font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--text); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .topbar { height: 52px; display: flex; align-items: center; justify-content: center; position: relative; flex: none; }
+  .week { font-size: 20px; font-weight: 600; }
+  .icons { position: absolute; right: 14px; display: flex; gap: 16px; }
+  .icons i { width: 20px; height: 20px; display: block; border-radius: 5px; background: #8A93A0; }
+  .days { height: 40px; display: flex; margin: 0 var(--side); flex: none; }
+  .days .pad { width: var(--gutter); flex: none; }
+  .day { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
+  .day .wd { font-size: 15px; }
+  .day .dt { font-size: 12px; color: var(--muted); }
+  .day.today .wd { font-weight: 700; color: var(--accent); }
+  .day.today .dt { color: var(--accent); }
+  .grid { display: flex; margin: 0 var(--side); flex: none; }
+  .gutter { width: var(--gutter); flex: none; position: relative; height: 496px; }
+  .gsec { position: absolute; left: 0; width: var(--gutter); height: var(--row);
+          display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .gsec .n { font-size: 14px; font-weight: 500; line-height: 16px; }
+  .gsec .t { font-size: 10px; color: var(--muted); line-height: 12px; }
+  .gsec.now .n, .gsec.now .t { color: var(--accent); }
+  .gsec.now .n { font-weight: 600; }
+  .cols { flex: 1; display: flex; position: relative; height: 496px; }
+  .band { position: absolute; left: 0; right: 0; height: var(--bandh);
+          display: flex; align-items: center; justify-content: center;
+          background: var(--band); border-radius: 10px; margin: 0 1px;
+          font-size: 11px; color: var(--muted); }
+  .col { flex: 1; position: relative; }
+  .card { position: absolute; left: 2px; right: 2px; border-radius: 10px;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 1px; text-align: center; padding: 3px 4px; overflow: hidden; }
+  .card .name { font-size: 12.7px; line-height: 14.2px; font-weight: 700; }
+  .card .place { font-size: 11px; line-height: 13px; }
+  .card .teacher { font-size: 10px; line-height: 12px; opacity: .85; }
+  .bottombar { margin-top: auto; padding: 8px 18px 20px; flex: none; }
+  .capsule { height: 54px; background: #FFFFFF; border-radius: 27px; display: flex; align-items: center;
+             box-shadow: 0 10px 26px rgba(20, 35, 60, .14), 0 1px 3px rgba(20, 35, 60, .08); position: relative; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+         font-size: 11px; color: #8A93A0; position: relative; z-index: 2; }
+  .tab i { width: 20px; height: 20px; border-radius: 5px; background: currentColor; opacity: .85; }
+  .tab.on { color: var(--accent); font-weight: 600; }
+  .pill2 { position: absolute; z-index: 1; height: 28px; width: 52px; border-radius: 14px;
+           background: rgba(47,111,228,.14); top: 13px; left: 16.666%; margin-left: -26px; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="week">第9周</div>
+    <div class="icons"><i></i><i></i><i></i></div>
+  </div>
+
+  <div class="days">
+    <div class="pad"></div>
+    <div class="day"><div class="wd">周一</div><div class="dt">11/16</div></div>
+    <div class="day"><div class="wd">周二</div><div class="dt">11/17</div></div>
+    <div class="day today"><div class="wd">周三</div><div class="dt">11/18</div></div>
+    <div class="day"><div class="wd">周四</div><div class="dt">11/19</div></div>
+    <div class="day"><div class="wd">周五</div><div class="dt">11/20</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="gutter">
+      <div class="gsec" style="top:0"><div class="n">1</div><div class="t">08:00</div><div class="t">08:45</div></div>
+      <div class="gsec" style="top:56px"><div class="n">2</div><div class="t">08:55</div><div class="t">09:40</div></div>
+      <div class="gsec now" style="top:112px"><div class="n">3</div><div class="t">10:00</div><div class="t">10:45</div></div>
+      <div class="gsec" style="top:168px"><div class="n">4</div><div class="t">10:55</div><div class="t">11:40</div></div>
+      <div class="gsec" style="top:248px"><div class="n">5</div><div class="t">14:00</div><div class="t">14:45</div></div>
+      <div class="gsec" style="top:304px"><div class="n">6</div><div class="t">14:55</div><div class="t">15:40</div></div>
+      <div class="gsec" style="top:360px"><div class="n">7</div><div class="t">15:50</div><div class="t">16:35</div></div>
+      <div class="gsec" style="top:440px"><div class="n">8</div><div class="t">19:00</div><div class="t">19:45</div></div>
+    </div>
+
+    <div class="cols">
+      <div class="band" style="top:224px">午休</div>
+      <div class="band" style="top:416px">晚休</div>
+
+      <div class="col">
+        <div class="card" style="top:2px;height:108px;background:#D8E7FB;color:#17457F">
+          <div class="name">高等数学A</div><div class="place">@博105</div><div class="teacher">张伟</div></div>
+        <div class="card" style="top:114px;height:108px;background:#D8E7FB;color:#17457F">
+          <div class="name">高等数学A</div><div class="place">@博105</div></div>
+        <div class="card" style="top:250px;height:164px;background:#D8E7FB;color:#17457F">
+          <div class="name">大学物理</div><div class="place">@理201</div><div class="teacher">李娜</div></div>
+        <div class="card" style="top:442px;height:52px;background:#D8E7FB;color:#17457F">
+          <div class="name">晚自习</div></div>
+      </div>
+
+      <div class="col">
+        <div class="card" style="top:2px;height:108px;background:#D5EDDD;color:#175C3B">
+          <div class="name">数据结构</div><div class="place">@计302</div><div class="teacher">王磊</div></div>
+        <div class="card" style="top:114px;height:108px;background:#D5EDDD;color:#175C3B">
+          <div class="name">数据结构实验</div><div class="place">@计302</div></div>
+        <div class="card" style="top:250px;height:108px;background:#F6DCE4;color:#7C2B45">
+          <div class="name">大学英语</div><div class="place">@外202</div></div>
+        <div class="card" style="top:442px;height:52px;background:#D5EDDD;color:#175C3B">
+          <div class="name">答疑</div></div>
+      </div>
+
+      <div class="col">
+        <div class="card" style="top:2px;height:108px;background:#FBE7D0;color:#7A4416">
+          <div class="name">线性代数</div><div class="place">@博106</div><div class="teacher">赵敏</div></div>
+        <div class="card" style="top:114px;height:108px;background:#D8E7FB;color:#17457F">
+          <div class="name">程序设计</div><div class="place">@计105</div><div class="teacher">陈鑫</div></div>
+        <div class="card" style="top:250px;height:164px;background:#E4DEFA;color:#452A8C">
+          <div class="name">近代史</div><div class="place">@文301</div></div>
+      </div>
+
+      <div class="col">
+        <div class="card" style="top:2px;height:108px;background:#E4DEFA;color:#452A8C">
+          <div class="name">思政课</div><div class="place">@文102</div><div class="teacher">刘洋</div></div>
+        <div class="card" style="top:114px;height:108px;background:#D5EDDD;color:#175C3B">
+          <div class="name">体育</div><div class="place">@体育馆</div></div>
+        <div class="card" style="top:250px;height:164px;background:#FBE7D0;color:#7A4416">
+          <div class="name">概率论</div><div class="place">@博203</div></div>
+      </div>
+
+      <div class="col">
+        <div class="card" style="top:2px;height:108px;background:#D3EDEA;color:#125A50">
+          <div class="name">数据库</div><div class="place">@计401</div><div class="teacher">孙悦</div></div>
+        <div class="card" style="top:114px;height:108px;background:#D3EDEA;color:#125A50">
+          <div class="name">数据库实验</div><div class="place">@计401</div></div>
+        <div class="card" style="top:250px;height:108px;background:#FBE7D0;color:#7A4416">
+          <div class="name">形势与政策</div><div class="place">@文205</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div class="capsule">
+      <div class="pill2"></div>
+      <div class="tab on"><i></i>课表</div>
+      <div class="tab"><i></i>课程</div>
+      <div class="tab"><i></i>我的</div>
+    </div>
+  </div>
+</body>
+</html>

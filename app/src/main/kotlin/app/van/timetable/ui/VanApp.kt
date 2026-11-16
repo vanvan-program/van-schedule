@@ -330,11 +330,11 @@ fun VanApp(
                                 Modifier.navigationBarsPadding()
                                     .padding(horizontal = 18.dp, vertical = 4.dp)
                                     .shadow(
-                                        elevation = 10.dp,
+                                        elevation = 12.dp,
                                         shape = navShape,
                                         clip = false,
-                                        ambientColor = Color.Black.copy(alpha = 0.16f),
-                                        spotColor = Color.Black.copy(alpha = 0.20f),
+                                        ambientColor = Color.Black.copy(alpha = 0.18f),
+                                        spotColor = Color.Black.copy(alpha = 0.22f),
                                     )
                                     .clip(navShape)
                                     .then(

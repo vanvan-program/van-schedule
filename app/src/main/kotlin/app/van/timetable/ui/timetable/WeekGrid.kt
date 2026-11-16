@@ -199,7 +199,7 @@ internal fun WeekGrid(
         val cardInsetX = 2.dp
         val cardInsetY = 2.dp
         val headerHeight = maxOf(40.dp, (34f * scale).dp)
-        val gapHeight = if (compactAxis) 0.dp else (20f * scale).dp
+        val gapHeight = if (compactAxis) 0.dp else (24f * scale).dp
         val gapCount = remember(sections) { GridTimeline.create(sections).bands.count { it.section == null } }
         val fitted = (maxHeight - headerHeight - 8.dp - gapHeight * gapCount) / sections.size
         val minimumRowHeight = maxOf((36f * scale).dp, labelHeight + 4.dp)
@@ -307,17 +307,18 @@ internal fun WeekGrid(
                         val kind = timeline.breakKindOf(band) ?: return@forEach
                         val bandTop = rowHeight * timeline.position(band.start)
                         val bandHeight = rowHeight * band.units
+                        // 横带铺满整天的宽度（时间列保持空白），不是只画一个小胶囊
                         Box(
-                            Modifier.offset(x = gutter + 4.dp, y = bandTop + 2.dp)
-                                .width(width - gutter - 8.dp)
-                                .height(maxOf(16.dp, bandHeight - 4.dp))
+                            Modifier.offset(x = gutter + 1.dp, y = bandTop + 2.dp)
+                                .width(width - gutter - 2.dp)
+                                .height(maxOf(18.dp, bandHeight - 4.dp))
                                 .background(colors.breakBand, ContinuousRoundedRectangle(10.dp)),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 if (kind == GridTimeline.BreakKind.LUNCH) "午休" else "晚休",
-                                fontSize = 12.sp,
-                                lineHeight = 15.sp,
+                                fontSize = 11.sp,
+                                lineHeight = 14.sp,
                                 color = colors.muted,
                             )
                         }
@@ -459,7 +460,7 @@ private fun GridCard(
     val textColor = when {
         inactive -> colors.inactiveText
         pastel -> {
-            val cardSurface = color.copy(alpha = 0.18f).compositeOver(colors.background)
+            val cardSurface = color.copy(alpha = PastelFillAlpha).compositeOver(colors.background)
             Color(
                 CoursePalette.pastelTextArgb(
                     color.toArgb().toLong() and 0xFFFFFFFFL,
@@ -480,8 +481,8 @@ private fun GridCard(
         !pastel && !inactive && !compact && glassSurface != null &&
             materialLevel != GlassMaterialLevel.NONE
     val fillAlpha = when {
-        inactive -> if (pastel) 0.12f else 0.85f
-        pastel -> 0.18f
+        inactive -> if (pastel) 0.14f else 0.85f
+        pastel -> PastelFillAlpha
         materialLevel == GlassMaterialLevel.NONE -> 1f
         else -> p.cardOpacity.coerceIn(0.25f, 1f)
     }

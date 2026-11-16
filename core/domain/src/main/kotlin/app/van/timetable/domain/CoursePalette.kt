@@ -64,8 +64,8 @@ object CoursePalette {
     fun pastelTextArgb(fill: Long, cardArgb: Long, isDark: Boolean = false): Long {
         val (hue, saturation) = hueSaturationOf(fill)
         val targetSaturation =
-            if (isDark) maxOf(saturation * 0.85, 0.45) else maxOf(saturation * 1.7, 0.62)
-        val start = if (isDark) 0.92 else 0.52
+            if (isDark) maxOf(saturation * 0.85, 0.45) else maxOf(saturation * 1.7, 0.55)
+        val start = if (isDark) 0.92 else 0.44
         val step = if (isDark) 0.03 else -0.03
         var value = start
         // 逐步压暗（深色主题逐步提亮），直到与卡片底色达到 4.6:1

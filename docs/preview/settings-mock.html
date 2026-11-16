@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>van课表 · 分组式设置页预览</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --bg:#F1F3F7; --text:#17202B; --muted:#6E7887; --accent:#2F6FE4; --line:rgba(110,120,135,.16); }
+  html, body { background:#fff; }
+  body { width:390px; height:844px; background:var(--bg); color:var(--text);
+         font-family:"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif; overflow:hidden; padding:0 16px; }
+  h1 { font-size:26px; line-height:32px; font-weight:700; margin:22px 0 18px; }
+  .profile { background:#fff; border-radius:20px; padding:18px; display:flex; align-items:center; gap:14px; }
+  .avatar { width:44px; height:44px; border-radius:14px; background:rgba(47,111,228,.14); }
+  .profile .t { font-size:16px; font-weight:600; line-height:21px; }
+  .profile .s { font-size:12px; color:var(--muted); line-height:16px; }
+  .group { margin-top:18px; }
+  .group > .label { font-size:12px; font-weight:500; color:var(--muted); margin:0 0 6px 8px; }
+  .card { background:#fff; border-radius:18px; overflow:hidden; }
+  .row { display:flex; align-items:center; padding:13px 16px; }
+  .row + .row { border-top:.6px solid var(--line); margin-left:16px; padding-left:0; }
+  .row .txt { flex:1; }
+  .row .t { font-size:15px; line-height:20px; }
+  .row .s { font-size:12px; line-height:16px; color:var(--muted); }
+  .row .chev { font-size:20px; color:rgba(110,120,135,.7); }
+  .foot { font-size:12px; color:rgba(110,120,135,.75); text-align:center; padding:22px 0; }
+  .track { display:flex; height:6px; align-items:center; justify-content:center; gap:6px; margin-top:8px; }
+  .track i { width:5px; height:5px; border-radius:3px; background:rgba(110,120,135,.35); }
+  .track i.on { width:5px; height:5px; background:var(--accent); }
+</style>
+</head>
+<body>
+  <h1>我的</h1>
+  <div class="profile">
+    <div class="avatar"></div>
+    <div>
+      <div class="t">2026 春 · 软件工程</div>
+      <div class="s">12 门课程 · 本地优先 · GPL-3.0</div>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="label">课表配置</div>
+    <div class="card">
+      <div class="row"><div class="txt"><div class="t">课表管理</div><div class="s">新建、切换、重命名与删除</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">学期设置</div><div class="s">开学日期与总周数</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">作息管理</div><div class="s">每节课的起止时间</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">节假日设置</div><div class="s">放假与调休日期</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">调课管理</div><div class="s">单日停课、换课与补课</div></div><div class="chev">›</div></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="label">外观与提醒</div>
+    <div class="card">
+      <div class="row"><div class="txt"><div class="t">外观设置</div><div class="s">主题、卡片风格、壁纸与材质</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">提醒与小米手环</div><div class="s">上课提醒与推送</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">手环课表</div><div class="s">把课程表发到手表</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">桌面小部件</div><div class="s">添加课表小部件</div></div><div class="chev">›</div></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="label">数据</div>
+    <div class="card">
+      <div class="row"><div class="txt"><div class="t">备份与分享</div><div class="s">导出、导入与快照回滚</div></div><div class="chev">›</div></div>
+    </div>
+  </div>
+
+  <div class="group">
+    <div class="label">关于</div>
+    <div class="card">
+      <div class="row"><div class="txt"><div class="t">关于版本</div><div class="s">更新记录与检查更新</div></div><div class="chev">›</div></div>
+      <div class="row"><div class="txt"><div class="t">帮助与关于</div><div class="s">使用说明、开源许可</div></div><div class="chev">›</div></div>
+    </div>
+  </div>
+
+  <div class="foot">van课表 · GPL-3.0-only · 本地优先</div>
+</body>
+</html>

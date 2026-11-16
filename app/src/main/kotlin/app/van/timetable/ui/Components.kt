@@ -94,6 +94,65 @@ fun Confirm(title: String, text: String, onDismiss: () -> Unit, onConfirm: () ->
     )
 }
 
+/** 设置页里的一行：主标题 + 次要说明 + 右侧箭头。 */
+data class SettingRow(val route: String, val title: String, val description: String = "")
+
+/**
+ * 分组式设置卡片：组标题在外面，组内所有行共享一张圆角卡，行间用一条极淡的分隔线。
+ *
+ * 之前「我的」页是 12 个独立卡片直接平铺，扫读时找不到分组；改成 iOS / Nexio 那种分组列表。
+ */
+@Composable
+fun SettingsGroup(title: String, rows: List<SettingRow>, onOpen: (String) -> Unit) {
+    val c = LocalVan.current
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            title,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Medium,
+            color = c.muted,
+            modifier = Modifier.padding(start = 8.dp, bottom = 6.dp),
+        )
+        Surface(
+            Modifier.fillMaxWidth(),
+            shape = ContinuousRoundedRectangle(18.dp),
+            color = c.surface,
+        ) {
+            Column {
+                rows.forEachIndexed { index, row ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { onOpen(row.route) }
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(row.title, fontSize = 15.sp, lineHeight = 20.sp)
+                            if (row.description.isNotEmpty()) {
+                                Text(
+                                    row.description,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
+                                    color = c.muted,
+                                )
+                            }
+                        }
+                        Text("›", fontSize = 20.sp, color = c.muted.copy(alpha = 0.7f))
+                    }
+                    if (index != rows.lastIndex) {
+                        HorizontalDivider(
+                            Modifier.padding(start = 16.dp),
+                            thickness = 0.6.dp,
+                            color = c.muted.copy(alpha = 0.16f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun CourseRow(
     o: Occurrence,
@@ -111,7 +170,7 @@ fun CourseRow(
     val surface =
         when {
             inactive -> c.inactive
-            pastel -> courseColor.copy(alpha = 0.18f).compositeOver(c.background)
+            pastel -> courseColor.copy(alpha = PastelFillAlpha).compositeOver(c.background)
             else -> c.surface
         }
     val accent =
