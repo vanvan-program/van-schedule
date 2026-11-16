@@ -1,12 +1,21 @@
-param(
+﻿param(
     [string[]]$Tasks = @(':core:domain:test', ':app:assembleDebug', ':app:lintDebug'),
     [string]$SdkPath = '',
     [string]$JavaPath = ''
 )
 $ErrorActionPreference = 'Stop'
 $projectPath = [IO.Path]::GetFullPath($PSScriptRoot)
-$toolPath = Join-Path (Split-Path $projectPath -Parent) '.tools'
-if (!(Test-Path -LiteralPath (Join-Path $toolPath 'gradle-9.3.1'))) { $toolPath = Join-Path $projectPath '.tools' }
+$toolPath = $null
+$searchDirectory = [IO.DirectoryInfo]::new($projectPath)
+while ($searchDirectory) {
+    $candidate = Join-Path $searchDirectory.FullName '.tools'
+    if (Test-Path -LiteralPath (Join-Path $candidate 'android-sdk\platform-tools')) {
+        $toolPath = $candidate
+        break
+    }
+    $searchDirectory = $searchDirectory.Parent
+}
+if (!$toolPath) { throw '未找到共享工具目录 .tools/android-sdk，请将项目放在 App 开发工作区内。' }
 if (!$SdkPath) {
     $SdkPath = Join-Path $toolPath 'sdk'
     if (!(Test-Path -LiteralPath $SdkPath)) { $SdkPath = Join-Path $toolPath 'android-sdk' }
