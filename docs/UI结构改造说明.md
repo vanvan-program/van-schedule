@@ -72,9 +72,6 @@ app/src/main/kotlin/app/van/timetable/ui/
 ├── BackupScreen.kt           35 行  备份与恢复
 ├── ShareScreen.kt            51 行  分享课表
 ├── WidgetGalleryScreen.kt   110 行  桌面小组件说明
-├── TimetableEntry.kt         33 行  过渡用转发入口（见 §4.4）
-├── EditorScreens.kt / SettingsScreens.kt    迁移索引（见 §4.4）
-└── WeekGrid.kt / TimetablePager.kt          迁移索引（见 §4.4）
 ```
 
 | 文件 | 改造前 | 改造后 |
@@ -121,11 +118,19 @@ app/src/main/kotlin/app/van/timetable/ui/
 `VanNavHostEnv` 显式传入 `state` / `vm` / `now` / 导入草稿 / 以及 5 个回调（选文件、教务入口、导出备份、恢复快照、导入落地）。
 文件读写、`ActivityResultLauncher`、`Stack.clear()` 全部留在 `VanApp`。屏幕只发意图。
 
-### 4.4 过渡期保留的旧路径
+### 4.4 旧路径已清理
 
-- `TimetableEntry.kt`：`ui.Timetable` 转发到 `ui.timetable.Timetable`，让导航宿主与 `Version023UiTest` 不必改 import。
-- `ui/WeekGrid.kt`、`ui/TimetablePager.kt`、`ui/EditorScreens.kt`、`ui/SettingsScreens.kt`：内容已迁走，只留迁移说明注释，
-  避免旧 import 静默指向过期实现。这四个文件都可以在调用点统一后整份删除。
+改造期间保留过 5 个过渡文件，0.4.2 发布后已全部删除：
+
+| 已删除 | 原有作用 | 删除时的处理 |
+| --- | --- | --- |
+| `ui/TimetableEntry.kt` | `ui.Timetable` 转发到 `ui.timetable.Timetable` | `VanNavHost` 与 `Version023UiTest` 改为直接 import `app.van.timetable.ui.timetable.Timetable` |
+| `ui/WeekGrid.kt` | 迁移说明（实现已在 `ui/timetable/WeekGrid.kt`） | 无声明、无引用，直接删除 |
+| `ui/TimetablePager.kt` | 迁移说明（实现已在 `ui/timetable/TimetablePager.kt`） | 同上 |
+| `ui/EditorScreens.kt` | 迁移索引（指向 4 个课程页面文件） | 同上 |
+| `ui/SettingsScreens.kt` | 迁移索引（指向 4 个设置页面文件） | 同上 |
+
+现在的 `ui/timetable/` 与 `ui/` 下都是真实实现，没有转发层；包路径仍是 `app.van.timetable.ui`，只有跨包调用（导航宿主与 instrumentation 测试）需要显式 import。
 
 ---
 
@@ -191,6 +196,6 @@ cd .\van-timetable
 
 1. ~~把 `TimetableScreen` 里的 Pager 状态抽成 `TimetablePagerState` 持有者~~ —— 已做（见 §3.1，381 → 294 行，换算逻辑由 12 项 JVM 测试覆盖）。
 2. ~~拆分 `EditorScreens.kt`（844 行）与 `SettingsScreens.kt`（575 行）~~ —— 已做（同包拆成 4 + 4 个文件，调用点零改动）。
-3. 把 `nav("...")` 调用点统一切到 `VanRoute` 常量（或 `VanRoute.CourseEdit(id)` 构造函数），然后删除 `TimetableEntry.kt` 与四个迁移索引文件。
+3. 把 `nav("...")` 调用点统一切到 `VanRoute` 常量（或 `VanRoute.CourseEdit(id)` 构造函数），这样 `vanRouteOf` 的旧字符串兼容层才能收掉。（过渡文件已在 §4.4 清理完毕。）
 4. 转场若要继续对齐 Nexio，方向是「整栈常驻 + 单一进度 + `Modifier.layout` 视差」，而不是给 `AnimatedContent` 加更多动画参数。
 5. `AppearanceScreen.kt`（324 行）仍是最大的单屏，内部按「材质／配色／壁纸／卡片」再拆成 4 个面板是下一步；它的状态都在 `Preferences` 上，拆分不需要动数据流。

@@ -9,8 +9,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import app.van.timetable.domain.*
-import app.van.timetable.ui.Timetable
 import app.van.timetable.ui.VanTheme
+import app.van.timetable.ui.timetable.Timetable
 import app.van.timetable.ui.weekdays
 import java.io.File
 import java.time.*

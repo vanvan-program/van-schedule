@@ -13,6 +13,7 @@ import app.van.timetable.domain.Backup
 import app.van.timetable.domain.Schedule
 import app.van.timetable.system.DocumentSource
 import app.van.timetable.ui.*
+import app.van.timetable.ui.timetable.Timetable
 import java.time.Instant
 
 /**
