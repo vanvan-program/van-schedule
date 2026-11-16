@@ -7,6 +7,16 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.4.2 课表页状态持有者与编辑／设置拆屏
+
+本版版本号 `0.4.2`（`versionCode 42`），不含新功能与行为变更，继续把 0.4.1 的 UI 分层做完：
+
+- 课表页的周／日双模式抽成 `TimetablePagerState`：两个分页、选中星期与选中日期、互斥的翻页任务集中一处，`TimetableScreen` 由 383 行降到 294 行，只留整页布局与拖拽状态机。
+- 页面换算（周次↔页面、日期↔日分页、某周第几天、拖拽边缘翻页判定）改为纯函数 `TimetablePaging`，新增 12 项 JVM 测试覆盖首尾钳制、跨月与单周课表。
+- `EditorScreens.kt`（844 行）拆为课程详情、课程编辑、学期设置、调课管理四个文件；`SettingsScreens.kt`（575 行）拆为「我的」、课表管理、外观设置、提醒与关于四个文件。包路径不变，调用点与测试零改动。
+
+验证范围与安装包校验见 [0.4.2 验证](docs/0.4.2验证.md)。
+
 ## 0.4.1 UI 结构重排与翻周性能修正
 
 本版版本号 `0.4.1`（`versionCode 41`），不新增功能、不改包名与数据格式，只重排 UI 层结构并修正一处翻页开销：
