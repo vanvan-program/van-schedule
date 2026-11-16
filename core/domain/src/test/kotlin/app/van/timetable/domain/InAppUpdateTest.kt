@@ -102,4 +102,35 @@ class InAppUpdateTest {
         assertNull(UpdateCheck.normalizeSha256("sha256:短了"))
         assertNull(UpdateCheck.normalizeSha256("md5:8cf1a9596ff250212999b0bf21ed4f34"))
     }
+
+    private val apkUrl = "https://github.com/vanvan-program/van-schedule/releases/download/v0.5.5/van-schedule-0.5.5-arm64.apk"
+
+    @Test fun downloadSourcesTryDirectFirstThenMirrors() {
+        val sources = UpdateCheck.downloadSources(apkUrl, useMirror = true)
+        assertEquals("直连必须排第一", apkUrl, sources.first())
+        assertEquals("不应有重复地址", sources.size, sources.distinct().size)
+        assertEquals(UpdateCheck.MIRROR_PREFIXES.size + 1, sources.size)
+        sources.drop(1).forEach { source ->
+            assertTrue("镜像地址应当以 https 开头并用原地址结尾：$source", source.startsWith("https://"))
+            assertTrue("镜像地址应当只是给原地址加前缀：$source", source.endsWith(apkUrl))
+            assertNotEquals("镜像地址不能等于原地址", apkUrl, source)
+        }
+    }
+
+    @Test fun downloadSourcesHonoursOptOut() {
+        assertEquals(listOf(apkUrl), UpdateCheck.downloadSources(apkUrl, useMirror = false))
+    }
+
+    @Test fun downloadSourcesHandlesBlankUrl() {
+        assertTrue(UpdateCheck.downloadSources("   ", useMirror = true).isEmpty())
+        assertTrue(UpdateCheck.downloadSources("", useMirror = false).isEmpty())
+    }
+
+    @Test fun mirrorPrefixesLookUsable() {
+        assertTrue("至少要有一个备用镜像", UpdateCheck.MIRROR_PREFIXES.isNotEmpty())
+        UpdateCheck.MIRROR_PREFIXES.forEach { prefix ->
+            assertTrue(prefix, prefix.startsWith("https://") && prefix.endsWith("/"))
+            assertFalse(prefix, prefix.contains(" "))
+        }
+    }
 }

@@ -10,6 +10,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import app.van.timetable.domain.ApkAsset
+import app.van.timetable.domain.UpdateCheck
 import java.io.File
 import java.net.ConnectException
 import java.net.HttpURLConnection
@@ -30,11 +31,12 @@ import javax.net.ssl.SSLException
  * 2. 安装包签名证书必须与本机已安装版本完全一致，否则删除并拒绝安装。
  */
 object UpdateInstaller {
-    private const val CONNECT_TIMEOUT_MS = 15_000
-    private const val READ_TIMEOUT_MS = 60_000
+    private const val CONNECT_TIMEOUT_MS = 8_000
+    private const val READ_TIMEOUT_MS = 30_000
 
     sealed interface Download {
-        data class Ready(val file: File) : Download
+        /** [viaMirror] 表示这份安装包是从公共加速镜像取到的，不是 GitHub 直连。 */
+        data class Ready(val file: File, val viaMirror: Boolean = false) : Download
 
         data class Failed(val message: String) : Download
     }
@@ -66,11 +68,15 @@ object UpdateInstaller {
     /**
      * 下载安装包。[onProgress] 回调 0–100，可能在后台线程被调用。
      * 已存在且校验通过的缓存文件会直接复用，避免重复下载十几兆。
+     *
+     * 国内直连 GitHub 常常很慢，所以按 [UpdateCheck.downloadSources] 的顺序换源：
+     * 先直连，失败或明显卡住再依次换成公共镜像。无论从哪下载，最后都要过摘要与签名校验。
      */
     fun download(
         context: Context,
         asset: ApkAsset,
         version: String,
+        useMirror: Boolean = true,
         onProgress: (Int) -> Unit = {},
     ): Download {
         val target = cachedFile(context, version)
@@ -79,11 +85,42 @@ object UpdateInstaller {
             return Download.Ready(target)
         }
         target.delete()
+        val sources = UpdateCheck.downloadSources(asset.url, useMirror)
+        if (sources.isEmpty()) return Download.Failed("没有可用的下载地址")
+        var lastMessage: String? = null
+        sources.forEachIndexed { index, source ->
+            onProgress(0)
+            val hasNext = index < sources.lastIndex
+            when (val result = attempt(context, source, asset, version, target, hasNext, onProgress)) {
+                is Download.Ready -> return Download.Ready(result.file, viaMirror = index > 0)
+                is Download.Failed -> lastMessage = result.message
+            }
+        }
+        return Download.Failed(lastMessage ?: "下载失败，请稍后重试")
+    }
+
+    /** 下载速度太慢、准备换源时抛出，用来中断当前连接。 */
+    private class SlowSourceException : Exception("这个地址太慢")
+
+    /** 单源下载超过这个时间且平均速度低于 [SLOW_KBPS] 就换源（仅当还有备用地址时）。 */
+    private const val SLOW_CHECK_AFTER_MS = 8_000L
+    private const val SLOW_KBPS = 60.0
+
+    /** 从单个地址下载并校验；失败时清理半成品，返回可直接展示的原因。 */
+    private fun attempt(
+        context: Context,
+        source: String,
+        asset: ApkAsset,
+        version: String,
+        target: File,
+        allowSlowFallback: Boolean,
+        onProgress: (Int) -> Unit,
+    ): Download {
         val temp = File(target.parentFile, "${target.name}.part")
         temp.delete()
         var connection: HttpURLConnection? = null
         try {
-            connection = (URL(asset.url).openConnection() as HttpURLConnection).apply {
+            connection = (URL(source).openConnection() as HttpURLConnection).apply {
                 connectTimeout = CONNECT_TIMEOUT_MS
                 readTimeout = READ_TIMEOUT_MS
                 instanceFollowRedirects = true
@@ -98,6 +135,7 @@ object UpdateInstaller {
             val digest = MessageDigest.getInstance("SHA-256")
             var written = 0L
             var lastPercent = -1
+            val startedAt = System.currentTimeMillis()
             connection.inputStream.use { input ->
                 temp.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
@@ -112,6 +150,13 @@ object UpdateInstaller {
                             if (percent != lastPercent) {
                                 lastPercent = percent
                                 onProgress(percent)
+                            }
+                        }
+                        if (allowSlowFallback) {
+                            val elapsed = System.currentTimeMillis() - startedAt
+                            if (elapsed >= SLOW_CHECK_AFTER_MS && written * 100 / total.coerceAtLeast(1) < 30) {
+                                val kbps = written / 1024.0 / (elapsed / 1000.0)
+                                if (kbps < SLOW_KBPS) throw SlowSourceException()
                             }
                         }
                     }
@@ -146,6 +191,9 @@ object UpdateInstaller {
         } catch (e: InterruptedException) {
             temp.delete()
             throw e
+        } catch (e: SlowSourceException) {
+            temp.delete()
+            return Download.Failed("这个下载地址太慢，已换下一个")
         } catch (e: Exception) {
             temp.delete()
             return Download.Failed(describeDownloadError(e))

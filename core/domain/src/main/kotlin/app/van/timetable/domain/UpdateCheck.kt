@@ -86,6 +86,29 @@ object UpdateCheck {
         val value = text.substringAfter(':', text).trim().lowercase()
         return value.takeIf { it.length == 64 && it.all { c -> c in '0'..'9' || c in 'a'..'f' } }
     }
+
+    /**
+     * 公共 GitHub 加速镜像。它们只是把请求转发到 GitHub，不参与校验，
+     * 所以即使镜像不可信，下载后仍会用 SHA-256 与签名证书把关。
+     * 这些站点变动频繁，失效时按顺序跳过即可，不影响直连。
+     */
+    val MIRROR_PREFIXES =
+        listOf(
+            "https://ghfast.top/",
+            "https://gh-proxy.com/",
+            "https://ghproxy.net/",
+        )
+
+    /**
+     * 下载地址列表：第一个永远是 GitHub 原始地址，后面是按序尝试的镜像。
+     * [useMirror] 为 false 时只返回原始地址（例如用户在设置里关掉了国内加速）。
+     */
+    fun downloadSources(originalUrl: String, useMirror: Boolean): List<String> {
+        val clean = originalUrl.trim()
+        if (clean.isEmpty()) return emptyList()
+        if (!useMirror) return listOf(clean)
+        return (listOf(clean) + MIRROR_PREFIXES.map { it + clean }).distinct()
+    }
     /**
      * 把发布标签或版本号文本规范成可比较的点分数字，例如 `v0.3.3` 转成 `0.3.3`。
      * 无法识别时返回 null，调用方按“没有拿到版本号”处理，不要猜测。

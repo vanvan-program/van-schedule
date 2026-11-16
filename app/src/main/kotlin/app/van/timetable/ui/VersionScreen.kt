@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.net.toUri
 import app.van.timetable.domain.AppRelease
+import app.van.timetable.domain.Preferences
 import app.van.timetable.domain.UpdateCheck
 import app.van.timetable.system.UpdateChecker
 import app.van.timetable.system.UpdateInstaller
@@ -33,7 +34,7 @@ import kotlinx.coroutines.withContext
 
 /** 关于版本：显示本机版本信息，并在用户点击时联网检查 GitHub 发布页的最新版本。 */
 @Composable
-fun VersionScreen(nav: (String) -> Unit) {
+fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
     val context = LocalContext.current
     val info = remember(context) { installedVersion(context) }
     val clock = remember { DateTimeFormatter.ofPattern("HH:mm") }
@@ -65,7 +66,7 @@ fun VersionScreen(nav: (String) -> Unit) {
         scope.launch {
             val result =
                 withContext(Dispatchers.IO) {
-                    UpdateInstaller.download(context, asset, release.version) { percent ->
+                    UpdateInstaller.download(context, asset, release.version, p.useDownloadMirror) { percent ->
                         scope.launch(Dispatchers.Main) { downloadPercent = percent }
                     }
                 }
@@ -73,9 +74,10 @@ fun VersionScreen(nav: (String) -> Unit) {
             when (result) {
                 is UpdateInstaller.Download.Ready -> {
                     val opened = UpdateInstaller.install(context, result.file)
+                    val via = if (result.viaMirror) "（通过加速镜像下载，已校验）" else ""
                     installNote =
-                        if (opened) "已打开系统安装界面，按提示点「安装」就能完成更新，课表和设置会保留。"
-                        else "没能调起系统安装界面，请确认已允许安装未知应用，或改用浏览器下载。"
+                        if (opened) "已打开系统安装界面$via，按提示点「安装」就能完成更新，课表和设置会保留。"
+                        else "没能调起系统安装界面$via，请确认已允许安装未知应用，或改用浏览器下载。"
                 }
                 is UpdateInstaller.Download.Failed -> installNote = result.message
             }
@@ -126,6 +128,12 @@ fun VersionScreen(nav: (String) -> Unit) {
         Panel(Modifier.testTag("update-panel")) {
             Text("检查版本更新", fontWeight = FontWeight.Medium)
             Muted("点击后联网读取 GitHub 发布页的最新版本与更新说明；有新版本时可以直接在应用内下载，由系统弹窗确认安装。不上传课表、账号或设备信息。")
+            Toggle(
+                "国内加速下载",
+                p.useDownloadMirror,
+                { enabled -> vm.prefs { it.copy(useDownloadMirror = enabled) } },
+                "直连 GitHub 失败或太慢时，依次改用公共加速镜像；安装包仍会校验 SHA-256 与签名，镜像无法篡改内容。",
+            )
             Button(
                 onClick = { check() },
                 enabled = state !is UpdateState.Checking,

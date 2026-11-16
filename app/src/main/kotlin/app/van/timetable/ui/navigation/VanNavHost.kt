@@ -172,7 +172,7 @@ internal fun VanNavHost(env: VanNavHostEnv) {
                 .firstOrNull { it.id == route.scheduleId }
                 ?.let { ShareScreen(it, vm) } ?: Missing(nav)
         VanRoute.About -> About(nav)
-        VanRoute.Version -> VersionScreen(nav)
+        VanRoute.Version -> VersionScreen(nav, state.preferences, vm)
         VanRoute.Changelog -> ChangelogScreen()
         is VanRoute.Unknown -> Missing(nav)
     }

@@ -45,4 +45,21 @@ class InAppUpdateInstallerTest {
         // 只验证调用安全；模拟器上是否已授权不影响这里。
         UpdateInstaller.canInstall(context)
     }
+
+    @Test fun downloadFailsCleanlyWhenEverySourceIsUnreachable() {
+        // 不给镜像、也给一个不存在的域名：应当返回 Failed 而不是抛异常或留下半成品。
+        val asset =
+            app.van.timetable.domain.ApkAsset(
+                name = "van-schedule-test-arm64.apk",
+                url = "https://mirror-does-not-exist.invalid/van-schedule-test.apk",
+                sha256 = "0".repeat(64),
+                size = 1024,
+            )
+        var lastPercent = -1
+        val result = UpdateInstaller.download(context, asset, "9.9.9-none", useMirror = false) { lastPercent = it }
+        assertTrue("应当干净地失败：$result", result is UpdateInstaller.Download.Failed)
+        val leftover = UpdateInstaller.cachedFile(context, "9.9.9-none")
+        assertFalse("失败后不能留下安装包", leftover.exists())
+        assertFalse("失败后不能留下半成品", File(leftover.parentFile, "${leftover.name}.part").exists())
+    }
 }
