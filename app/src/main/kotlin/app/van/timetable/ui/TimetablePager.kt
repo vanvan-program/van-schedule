@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -22,6 +23,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.dp
+import com.haooz.softglass.shape.ContinuousRoundedRectangle
+import kotlin.math.absoluteValue
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 // A century on either side of the initial date; avoid giant pager indices whose
@@ -29,12 +33,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 internal const val DAY_PAGER_ANCHOR = 36_500
 internal const val DAY_PAGER_COUNT = DAY_PAGER_ANCHOR * 2 + 1
 
-// Keep finger tracking and animated snapping. Avoid whole-page fading/scaling:
-// composing a translucent timetable layer adds work to every drag frame.
 @Composable
 internal fun TimetablePager(
     state: PagerState,
     modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
     content: @Composable (Int) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
@@ -51,6 +54,7 @@ internal fun TimetablePager(
     HorizontalPager(
         state = state,
         modifier = modifier,
+        userScrollEnabled = userScrollEnabled,
         key = { it },
         beyondViewportPageCount = 1,
         flingBehavior =
@@ -62,7 +66,21 @@ internal fun TimetablePager(
                 snapPositionalThreshold = 0.18f,
             ),
     ) { page ->
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                val rawOffset = (state.currentPage - page) + state.currentPageOffsetFraction
+                val offset = rawOffset.absoluteValue.coerceIn(0f, 1f)
+                alpha = 1f - 0.14f * offset
+                val scale = 1f - 0.025f * offset
+                scaleX = scale
+                scaleY = scale
+                translationX = rawOffset * 10f
+                if (offset > 0.01f) {
+                    clip = true
+                    shape = ContinuousRoundedRectangle((14f * offset).dp)
+                }
+            }
+        ) {
             content(page)
         }
     }

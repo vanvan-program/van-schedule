@@ -38,6 +38,16 @@ object Widgets {
         }
     }
 
+    internal fun isMonetEnabled(c: Context, id: Int, p: Preferences): Boolean {
+        val mode =
+            c.getSharedPreferences("widgets", Context.MODE_PRIVATE).getString("monet_$id", "app")
+        return when (mode) {
+            "on" -> true
+            "off" -> false
+            else -> p.monetColor
+        }
+    }
+
     internal fun height(c: Context, id: Int): Int =
         AppWidgetManager.getInstance(c)
             .getAppWidgetOptions(id)
@@ -72,6 +82,7 @@ object Widgets {
             )
 
     suspend fun boundaries(c: Context, now: Instant): List<Instant> {
+        val p = (c.applicationContext as VanApplication).store.prefs()
         val manager = AppWidgetManager.getInstance(c)
         val schedules =
             classes
@@ -83,7 +94,7 @@ object Widgets {
             val date = now.atZone(zone).toLocalDate()
             listOf(date.plusDays(1).atStartOfDay(zone).toInstant()) +
                 (0..1)
-                    .flatMap { CourseEngine.resolveDay(s, date.plusDays(it.toLong())) }
+                    .flatMap { CourseEngine.resolveDay(s, date.plusDays(it.toLong()), p.globalDayOverrides) }
                     .flatMap { listOf(it.startsAt(zone), it.endsAt(zone)) }
         }
     }
@@ -105,12 +116,13 @@ object Widgets {
             if (provider.endsWith("NextWidget")) "next"
             else if (provider.endsWith("TodayWidget")) "today" else "dual"
         val dark = isDark(c, id, p)
+        val monet = WidgetMonetHelper.palette(c, dark, isMonetEnabled(c, id, p))
         val widgetHeight = height(c, id)
         // Widget options report the available content size after host padding.
         val compact = widgetHeight < 140 || c.resources.configuration.fontScale > 1.15f
         val tiny = widgetHeight <= 100
-        val text = Color.parseColor(if (dark) "#ECECF3" else "#252635")
-        val secondary = Color.parseColor(if (dark) "#B3B3C2" else "#737583")
+        val text = monet?.title ?: Color.parseColor(if (dark) "#ECECF3" else "#252635")
+        val secondary = monet?.secondary ?: Color.parseColor(if (dark) "#B3B3C2" else "#737583")
         val now = Instant.now()
         val zone = ZoneId.of(s?.zone ?: "Asia/Shanghai")
         val today = now.atZone(zone).toLocalDate()
@@ -125,6 +137,11 @@ object Widgets {
             "setBackgroundResource",
             if (dark) R.drawable.widget_dark else R.drawable.widget_light,
         )
+        if (monet != null) {
+            WidgetMonetHelper.tintBackground(view, R.id.widget_root, monet.surface)
+        } else {
+            WidgetMonetHelper.clearBackgroundTint(view, R.id.widget_root)
+        }
         val weekLabel = s?.let {
             val week = CourseEngine.week(it, today)
             if (week < 1) "未开学" else if (week > it.maxWeeks) "已结课" else "第${week}周"
@@ -133,7 +150,7 @@ object Widgets {
         val dateLabel = "${today.monthValue}.${today.dayOfMonth}  $weekLabel  $weekday"
         view.setTextViewText(R.id.widget_date, SpannableString(dateLabel).apply {
             setSpan(
-                ForegroundColorSpan(Color.parseColor(if (dark) "#A7BCEF" else "#4C6090")),
+                ForegroundColorSpan(monet?.accent ?: Color.parseColor(if (dark) "#A7BCEF" else "#4C6090")),
                 dateLabel.length - weekday.length,
                 dateLabel.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -165,7 +182,7 @@ object Widgets {
         view.setOnClickPendingIntent(R.id.widget_date, home)
         view.setOnClickPendingIntent(R.id.widget_root, home)
         if (type == "next") {
-            val next = s?.let { CourseEngine.next(it, now) }
+            val next = s?.let { CourseEngine.next(it, now, p.globalDayOverrides) }
             view.setTextViewText(
                 R.id.next_name,
                 next?.course?.name ?: if (s == null) "请启用课表" else "暂无后续课程",
@@ -197,7 +214,7 @@ object Widgets {
             view.setInt(
                 R.id.widget_divider,
                 "setBackgroundColor",
-                Color.parseColor(if (dark) "#444450" else "#D5D4DE"),
+                monet?.divider ?: Color.parseColor(if (dark) "#444450" else "#D5D4DE"),
             )
             view.setViewVisibility(
                 R.id.widget_divider,
@@ -250,9 +267,9 @@ object Widgets {
                     R.id.widget_refresh,
                 )
                 .forEach { view.setTextColor(it, secondary) }
-            val remaining = s?.let { CourseEngine.remaining(it, now) }.orEmpty()
-            val tomorrow = s?.let { CourseEngine.resolveDay(it, today.plusDays(1)) }.orEmpty()
-            val original = s?.let { CourseEngine.resolveDay(it, today) }.orEmpty()
+            val remaining = s?.let { CourseEngine.remaining(it, now, p.globalDayOverrides) }.orEmpty()
+            val tomorrow = s?.let { CourseEngine.resolveDay(it, today.plusDays(1), p.globalDayOverrides) }.orEmpty()
+            val original = s?.let { CourseEngine.resolveDay(it, today, p.globalDayOverrides) }.orEmpty()
             view.setTextViewText(
                 R.id.today_empty,
                 if (s == null) "请在App启用课表"
@@ -278,6 +295,7 @@ object Widgets {
                 dark,
                 compact,
                 tiny,
+                monet,
             )
             if (type == "dual")
                 bindList(
@@ -294,6 +312,7 @@ object Widgets {
                     dark,
                     compact,
                     tiny,
+                    monet,
                 )
             val refresh =
                 Intent(c, Class.forName(provider))
@@ -331,6 +350,7 @@ object Widgets {
         dark: Boolean,
         compact: Boolean,
         tiny: Boolean,
+        monet: WidgetMonetHelper.Palette? = null,
     ) {
         view.setEmptyView(listId, emptyId)
         if (Build.VERSION.SDK_INT >= 31) {
@@ -339,7 +359,7 @@ object Widgets {
                     .setHasStableIds(true)
                     .setViewTypeCount(2)
             items.forEach { o ->
-                builder.addItem(stableId(o.id), item(c, o, now, zone, dark, compact, tiny, height(c, id) >= 180))
+                builder.addItem(stableId(o.id), item(c, o, now, zone, dark, compact, tiny, height(c, id) >= 180, monet))
             }
             view.setRemoteAdapter(listId, builder.build())
         } else {
@@ -377,6 +397,7 @@ object Widgets {
         compact: Boolean = true,
         tiny: Boolean = false,
         spacious: Boolean = false,
+        monet: WidgetMonetHelper.Palette? = null,
     ) =
         RemoteViews(
                 c.packageName,
@@ -385,6 +406,21 @@ object Widgets {
             .apply {
                 val ongoing = now >= o.startsAt(zone) && now < o.endsAt(zone)
                 val name = (if (o.adjusted) "【调】" else "") + o.course.name
+                if (ongoing) {
+                    setInt(
+                        R.id.item_root,
+                        "setBackgroundResource",
+                        if (dark) R.drawable.widget_item_active_dark else R.drawable.widget_item_active_light,
+                    )
+                    if (monet != null) {
+                        WidgetMonetHelper.tintBackground(this, R.id.item_root, monet.activeCard)
+                    } else {
+                        WidgetMonetHelper.clearBackgroundTint(this, R.id.item_root)
+                    }
+                } else {
+                    setInt(R.id.item_root, "setBackgroundColor", Color.TRANSPARENT)
+                    WidgetMonetHelper.clearBackgroundTint(this, R.id.item_root)
+                }
                 setTextViewText(R.id.item_name, name)
                 setTextViewText(
                     R.id.item_place,
@@ -402,22 +438,23 @@ object Widgets {
                     R.id.item_root,
                     "${if (ongoing) "正在上课，" else ""}$name，${o.start}–${o.end}，${o.place.ifBlank { "地点待定" }}${o.session.teacher.takeIf { it.isNotBlank() }?.let { "，$it" }.orEmpty()}",
                 )
-                setTextColor(R.id.item_name, Color.parseColor(if (dark) "#ECECF3" else "#252635"))
+                setTextColor(R.id.item_name, monet?.title ?: Color.parseColor(if (dark) "#ECECF3" else "#252635"))
                 setViewVisibility(R.id.item_status, if (ongoing) View.VISIBLE else View.GONE)
                 setTextColor(
                     R.id.item_status,
-                    Color.parseColor(if (dark) "#9DBBFF" else "#4261A6"),
+                    monet?.accent ?: Color.parseColor(if (dark) "#9DBBFF" else "#4261A6"),
                 )
-                setTextColor(R.id.item_place, Color.parseColor(if (dark) "#C3C3D0" else "#50515C"))
-                setTextColor(R.id.item_time, Color.parseColor(if (dark) "#B3B3C2" else "#737583"))
+                setTextColor(R.id.item_place, monet?.secondary ?: Color.parseColor(if (dark) "#C3C3D0" else "#50515C"))
+                setTextColor(R.id.item_time, monet?.secondary ?: Color.parseColor(if (dark) "#B3B3C2" else "#737583"))
                 val nameSize = if (spacious && !compact) 14f else if (compact) 12f else 13f
                 val detailSize = if (spacious && !compact) 12f else 10f
-                setViewPadding(R.id.item_root, 0, dp(c, 1), 0, dp(c, 1))
+                val hPad = if (ongoing) dp(c, 6) else 0
+                setViewPadding(R.id.item_root, hPad, dp(c, if (ongoing) 3 else 1), hPad, dp(c, if (ongoing) 3 else 1))
                 setTextViewTextSize(R.id.item_name, TypedValue.COMPLEX_UNIT_SP, nameSize)
                 setTextViewTextSize(R.id.item_place, TypedValue.COMPLEX_UNIT_SP, detailSize)
                 setTextViewTextSize(R.id.item_time, TypedValue.COMPLEX_UNIT_SP, detailSize)
                 if (tiny) {
-                    setViewPadding(R.id.item_root, 0, 0, 0, 0)
+                    setViewPadding(R.id.item_root, if (ongoing) dp(c, 3) else 0, 0, if (ongoing) dp(c, 3) else 0, 0)
                     setTextViewTextSize(R.id.item_name, TypedValue.COMPLEX_UNIT_SP, 11f)
                     setTextViewTextSize(R.id.item_time, TypedValue.COMPLEX_UNIT_SP, 9f)
                     setTextViewTextSize(R.id.item_place, TypedValue.COMPLEX_UNIT_SP, 9f)
@@ -475,6 +512,7 @@ open class VanWidget : AppWidgetProvider() {
         ids.forEach {
             edit.remove("theme_$it")
             edit.remove("schedule_$it")
+            edit.remove("monet_$it")
         }
         edit.apply()
     }
@@ -495,6 +533,7 @@ class CourseListService : RemoteViewsService() {
             var compact = true
             var tiny = false
             var spacious = false
+            var monet: WidgetMonetHelper.Palette? = null
             val column = intent.getStringExtra("column")
 
             override fun onCreate() {}
@@ -505,6 +544,12 @@ class CourseListService : RemoteViewsService() {
                     val widgetId = intent.getIntExtra("id", 0)
                     val preferences = (applicationContext as VanApplication).store.prefs()
                     dark = Widgets.isDark(applicationContext, widgetId, preferences)
+                    monet =
+                        WidgetMonetHelper.palette(
+                            applicationContext,
+                            dark,
+                            Widgets.isMonetEnabled(applicationContext, widgetId, preferences),
+                        )
                     val widgetHeight = Widgets.height(applicationContext, widgetId)
                     compact = widgetHeight < 140 || resources.configuration.fontScale > 1.15f
                     tiny = widgetHeight <= 100
@@ -513,8 +558,12 @@ class CourseListService : RemoteViewsService() {
                     list =
                         if (s == null) emptyList()
                         else if (column == "tomorrow")
-                            CourseEngine.resolveDay(s, LocalDate.now(zone).plusDays(1))
-                        else CourseEngine.remaining(s, Instant.now())
+                            CourseEngine.resolveDay(
+                                s,
+                                LocalDate.now(zone).plusDays(1),
+                                preferences.globalDayOverrides,
+                            )
+                        else CourseEngine.remaining(s, Instant.now(), preferences.globalDayOverrides)
                 }
             }
 
@@ -526,7 +575,7 @@ class CourseListService : RemoteViewsService() {
 
             override fun getViewAt(position: Int) =
                 list.getOrNull(position)?.let {
-                    Widgets.item(applicationContext, it, Instant.now(), zone, dark, compact, tiny, spacious)
+                    Widgets.item(applicationContext, it, Instant.now(), zone, dark, compact, tiny, spacious, monet)
                 }
 
             override fun getLoadingView(): RemoteViews? = null

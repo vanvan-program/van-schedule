@@ -48,6 +48,12 @@ class WidgetSettingsActivity : ComponentActivity() {
                             ?: "app"
                     )
                 }
+                var monetMode by rememberSaveable {
+                    mutableStateOf(
+                        getSharedPreferences("widgets", MODE_PRIVATE).getString("monet_$id", "app")
+                            ?: "app"
+                    )
+                }
                 var selected by rememberSaveable {
                     mutableStateOf(
                         getSharedPreferences("widgets", MODE_PRIVATE)
@@ -73,8 +79,18 @@ class WidgetSettingsActivity : ComponentActivity() {
                     if (selected.isNotBlank() && schedules.none { it.id == selected })
                         Text("绑定的课表已删除，请重新选择", color = MaterialTheme.colorScheme.error)
                     Text("主题", style = MaterialTheme.typography.titleMedium)
-                    listOf("app" to "跟随App", "light" to "浅色", "dark" to "深色").forEach { (v, t) ->
-                        FilterChip(mode == v, { mode = v }, label = { Text(t) })
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("app" to "跟随App", "light" to "浅色", "dark" to "深色").forEach { (v, t) ->
+                            FilterChip(mode == v, { mode = v }, label = { Text(t) })
+                        }
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= 31) {
+                        Text("莫奈取色（Android 12+）", style = MaterialTheme.typography.titleMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("app" to "跟随App", "on" to "开启", "off" to "关闭").forEach { (v, t) ->
+                                FilterChip(monetMode == v, { monetMode = v }, label = { Text(t) })
+                            }
+                        }
                     }
                     Text("课程和假期保存后自动同步，课程开始、结束和跨天自动刷新，无需手动更新。")
                     if (android.os.Build.VERSION.SDK_INT >= 31) {
@@ -98,6 +114,7 @@ class WidgetSettingsActivity : ComponentActivity() {
                             getSharedPreferences("widgets", MODE_PRIVATE)
                                 .edit()
                                 .putString("theme_$id", mode)
+                                .putString("monet_$id", monetMode)
                                 .putString("schedule_$id", selected)
                                 .apply()
                             app.scope.launch {

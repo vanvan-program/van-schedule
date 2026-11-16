@@ -18,11 +18,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.van.timetable.ui.nexio.dropdownPanelEntry
+import com.haooz.softglass.shape.ContinuousRoundedRectangle
 
 // Immutable destination identity: outgoing content must not read the new route/tab.
 internal data class VanDestination(
@@ -77,7 +81,13 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
             "我的" to Icons.Outlined.PersonOutline,
         )
     }
-    BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+    val density = LocalDensity.current
+    val config = LocalConfiguration.current
+    val navMinHeight =
+        ((if (config.screenHeightDp < 640) 48f else 54f) * density.fontScale.coerceIn(0.85f, 1.2f))
+            .coerceIn(48f, 68f)
+            .dp
+    BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = navMinHeight)) {
         val slot = maxWidth / items.size
         val indicatorX = animateDpAsState(
             slot * tab + (slot - 50.dp) / 2,
@@ -87,7 +97,7 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
         Box(
             Modifier.offset { IntOffset(indicatorX.value.roundToPx(), 5.dp.roundToPx()) }
                 .size(50.dp, 24.dp)
-                .background(Color(0xFF3874F6), RoundedCornerShape(14.dp))
+                .background(LocalVan.current.blue, ContinuousRoundedRectangle(14.dp))
                 .testTag("tab-indicator")
         )
         Row(Modifier.fillMaxWidth()) {
@@ -97,10 +107,15 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
                     tween(150), label = "tab-tint",
                 )
                 Column(
-                    Modifier.weight(1f).heightIn(min = 56.dp)
+                    Modifier.weight(1f).heightIn(min = navMinHeight)
+                        .dropdownPanelEntry(
+                            enabled = true,
+                            selected = tab == index,
+                            action = { if (tab != index) onSelect(index) },
+                        )
                         .selectable(selected = tab == index, role = Role.Tab,
                             onClick = { if (tab != index) onSelect(index) })
-                        .padding(vertical = 5.dp),
+                        .padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {

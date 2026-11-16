@@ -17,5 +17,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "VanTimetable"
 
-include(":app", ":core:domain", ":core:data")
+include(":app", ":core:domain", ":core:data", ":softglass")
 include(":qa:release")

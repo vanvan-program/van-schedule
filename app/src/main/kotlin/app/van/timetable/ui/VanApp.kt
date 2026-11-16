@@ -22,8 +22,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.*
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,7 +43,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.van.timetable.domain.*
 import app.van.timetable.school.*
 import app.van.timetable.system.*
+import app.van.timetable.ui.nexio.*
 import app.van.timetable.widget.*
+import com.haooz.softglass.GlassMaterialLevel
+import com.haooz.softglass.backdrop.backdrops.layerBackdrop
+import com.haooz.softglass.backdrop.backdrops.rememberLayerBackdrop
+import com.haooz.softglass.platform.isRenderEffectSupported
+import com.haooz.softglass.shape.ContinuousRoundedRectangle
 import java.time.*
 import kotlinx.coroutines.*
 
@@ -124,7 +142,17 @@ fun VanApp(
             else message = "这门课程或绑定的课表已删除"
         }
     }
-    BackHandler(route != "main") { back() }
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    BackHandler(route != "main" && !state.preferences.predictiveBack) { back() }
+    PredictiveBackHandler(enabled = route != "main" && state.preferences.predictiveBack) { progressFlow ->
+        try {
+            progressFlow.collect { event -> backProgress = event.progress }
+            backProgress = 0f
+            back()
+        } catch (_: CancellationException) {
+            backProgress = 0f
+        }
+    }
     val pick =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null)
@@ -174,39 +202,147 @@ fun VanApp(
             }
         }
     val c = LocalVan.current
-    Scaffold(
-        modifier = Modifier.background(Brush.verticalGradient(listOf(c.top, c.background))),
-        containerColor = androidx.compose.ui.graphics.Color.Transparent,
-        topBar = {
-            if (route != "main")
-                TopAppBar(
-                    title = { Text(title(route)) },
-                    navigationIcon = {
-                        IconButton(
-                            onClick = {
-                                (context as? ComponentActivity)
-                                    ?.onBackPressedDispatcher
-                                    ?.onBackPressed() ?: back()
-                            }
-                        ) {
-                            Icon(Icons.Outlined.ArrowBack, "返回")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = c.top),
-                )
-        },
-        bottomBar = {
-            if (route == "main")
-                Surface(
-                    Modifier.navigationBarsPadding().padding(horizontal = 18.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    color =
-                        if (c.dark) c.surface else androidx.compose.ui.graphics.Color(0xFF243249),
-                ) {
-                    VanTabBar(tab) { tab = it }
+    val p = state.preferences
+    val materialLevel = LocalVanMaterialLevel.current
+    val mainBackdrop = rememberLayerBackdrop()
+    var wallpaperBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(p.wallpaperUri) {
+        wallpaperBitmap = WallpaperStore.loadImageBitmap(p.wallpaperUri)
+    }
+    val density = LocalDensity.current
+    val config = LocalConfiguration.current
+    val screenWPx = with(density) { config.screenWidthDp.dp.toPx() }
+    val screenHPx = with(density) { config.screenHeightDp.dp.toPx() }
+    val cardGlassStyle = remember(p, c.dark) { p.toCardSoftGlassStyle(c.dark) }
+    val glassSurface =
+        if (materialLevel != GlassMaterialLevel.NONE) {
+            rememberVanSoftGlassSurface(
+                wallpaperBitmap = wallpaperBitmap,
+                wallpaperScale = 1f,
+                wallpaperOffset = Offset.Zero,
+                screenWidthPx = screenWPx,
+                screenHeightPx = screenHPx,
+                wallpaperBrightness = (p.wallpaperBrightness - 1f) * 50f,
+                style = cardGlassStyle,
+            )
+        } else null
+    val bottomDragSelect = remember {
+        DropdownPanelDragSelectState(
+            axis = DragSelectAxis.Horizontal,
+            maskMode = DropdownMaskMode.Sliding,
+        )
+    }
+    val haptic = LocalHapticFeedback.current
+    CompositionLocalProvider(
+        LocalVanBackdrop provides mainBackdrop,
+        LocalVanSoftGlassSurface provides glassSurface,
+    ) {
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer {
+                    if (backProgress > 0f && route != "main") {
+                        val s = 1f - 0.08f * backProgress
+                        scaleX = s
+                        scaleY = s
+                        translationX = backProgress * 42f
+                        clip = true
+                        shape = ContinuousRoundedRectangle((backProgress * 28f).dp)
+                    }
                 }
-        },
-    ) { insets ->
+        ) {
+            Box(
+                Modifier.fillMaxSize()
+                    .then(
+                        if (materialLevel != GlassMaterialLevel.NONE) Modifier.layerBackdrop(mainBackdrop)
+                        else Modifier
+                    )
+                    .background(Brush.verticalGradient(listOf(c.top, c.background)))
+            ) {
+                wallpaperBitmap?.let { bmp ->
+                    val gain = p.wallpaperBrightness.coerceIn(0.3f, 1.4f)
+                    Image(
+                        bitmap = bmp,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        colorFilter = ColorFilter.colorMatrix(
+                            ColorMatrix(
+                                floatArrayOf(
+                                    gain, 0f, 0f, 0f, 0f,
+                                    0f, gain, 0f, 0f, 0f,
+                                    0f, 0f, gain, 0f, 0f,
+                                    0f, 0f, 0f, 1f, 0f,
+                                )
+                            )
+                        ),
+                        modifier =
+                            Modifier.fillMaxSize().let { m ->
+                                if (p.wallpaperBlurDp > 0.5f && isRenderEffectSupported()) {
+                                    m.blur(p.wallpaperBlurDp.dp)
+                                } else m
+                            },
+                    )
+                }
+            }
+            Scaffold(
+                containerColor = Color.Transparent,
+                topBar = {
+                    if (route != "main")
+                        ProgressiveBlurTopBar(
+                            backdrop = mainBackdrop,
+                            tintColor = c.top,
+                            useFakeProgressiveBlur = !p.trueProgressiveBlur,
+                            useGradientMask = materialLevel == GlassMaterialLevel.NONE,
+                        ) {
+                            TopAppBar(
+                                title = { MotionText(title(route)) },
+                                navigationIcon = {
+                                    IconButton(
+                                        onClick = {
+                                            (context as? ComponentActivity)
+                                                ?.onBackPressedDispatcher
+                                                ?.onBackPressed() ?: back()
+                                        }
+                                    ) {
+                                        Icon(Icons.Outlined.ArrowBack, "返回")
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                            )
+                        }
+                },
+                bottomBar = {
+                    if (route == "main") {
+                        val navShape = ContinuousRoundedRectangle(28.dp)
+                        val navBg =
+                            if (c.dark) c.surface.copy(alpha = 0.85f)
+                            else Color(0xFF243249).copy(alpha = if (materialLevel == GlassMaterialLevel.NONE) 1f else 0.86f)
+                        CompositionLocalProvider(LocalDropdownPanelDragSelect provides bottomDragSelect) {
+                            Box(
+                                Modifier.navigationBarsPadding()
+                                    .padding(horizontal = 18.dp, vertical = 4.dp)
+                                    .clip(navShape)
+                                    .then(
+                                        if (materialLevel != GlassMaterialLevel.NONE) {
+                                            Modifier.vanChromeGlass(
+                                                backdrop = mainBackdrop,
+                                                shape = navShape,
+                                                level = materialLevel,
+                                                isDark = true,
+                                                fallbackColor = navBg,
+                                            )
+                                        } else {
+                                            Modifier.background(navBg, navShape)
+                                        }
+                                    )
+                                    .dropdownPanelSlidingMask(bottomDragSelect, ContinuousRoundedRectangle(20.dp))
+                                    .dropdownPanelDragSelect(bottomDragSelect, { 1f }, haptic)
+                            ) {
+                                VanTabBar(tab) { tab = it }
+                            }
+                        }
+                    }
+                },
+            ) { insets ->
         Box(Modifier.padding(insets).fillMaxSize()) {
             if (!state.ready) CircularProgressIndicator(Modifier.align(Alignment.Center))
             else {
@@ -259,6 +395,12 @@ fun VanApp(
                                                         now,
                                                         ::nav,
                                                         if (openTimetable) initialDate else null,
+                                                        schedules = state.schedules,
+                                                        onSelectSchedule = { id ->
+                                                            viewedScheduleId = null
+                                                            vm.prefs { it.copy(activeScheduleId = id) }
+                                                        },
+                                                        onUpdateSchedule = { vm.save(it) },
                                                     )
                                                 }
                                             else if (state.schedules.isEmpty()) Welcome(vm, ::nav)
@@ -412,6 +554,8 @@ fun VanApp(
                             style = MaterialTheme.typography.bodySmall,
                         )
                 }
+        }
+    }
         }
     }
     message?.let { value ->

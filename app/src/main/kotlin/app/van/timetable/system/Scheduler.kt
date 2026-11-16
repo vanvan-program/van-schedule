@@ -80,8 +80,12 @@ object Scheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun reminderItems(s: Schedule, date: LocalDate): List<Occurrence> {
-        val all = CourseEngine.resolveDay(s, date)
+    private fun reminderItems(
+        s: Schedule,
+        date: LocalDate,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): List<Occurrence> {
+        val all = CourseEngine.resolveDay(s, date, globalDayOverrides)
         val groups = CourseEngine.conflicts(all)
         val excluded =
             groups
@@ -124,7 +128,10 @@ object Scheduler {
             val zone = ZoneId.of(s.zone)
             val now = Instant.now()
             val date = now.atZone(zone).toLocalDate()
-            val candidates = (0..2).flatMap { d -> reminderItems(s, date.plusDays(d.toLong())) }
+            val candidates =
+                (0..2).flatMap { d ->
+                    reminderItems(s, date.plusDays(d.toLong()), p.globalDayOverrides)
+                }
             if (p.reminders && eventTime != null && allowed(c)) {
                 val due = candidates.filter { o ->
                     o.startsAt(zone)
@@ -165,7 +172,7 @@ object Scheduler {
                 }
             }
             if (active != null && p.statusNotification && allowed(c)) {
-                val next = CourseEngine.next(s, now)
+                val next = CourseEngine.next(s, now, p.globalDayOverrides)
                 if (next == null) NotificationManagerCompat.from(c).cancel(1)
                 else
                     post(
@@ -193,7 +200,9 @@ object Scheduler {
                 }
             if (p.statusNotification || Widgets.hasAny(c))
                 (0..1)
-                    .flatMap { CourseEngine.resolveDay(s, date.plusDays(it.toLong())) }
+                    .flatMap {
+                        CourseEngine.resolveDay(s, date.plusDays(it.toLong()), p.globalDayOverrides)
+                    }
                     .forEach { o ->
                         boundaries += o.startsAt(zone)
                         boundaries += o.endsAt(zone)

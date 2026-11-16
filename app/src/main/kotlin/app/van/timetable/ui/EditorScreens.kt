@@ -121,6 +121,68 @@ fun Detail(
             )
             if (!state.preferences.reminders) Muted("全局提醒尚未开启，请在我的 → 提醒设置中开启")
         }
+        val activeWeek = date?.let { CourseEngine.week(s, LocalDate.parse(it)).takeIf { w -> w in 1..s.maxWeeks } }
+        var editWeekNoteFor by remember { mutableStateOf<Int?>(null) }
+        var weekNoteDraft by remember { mutableStateOf("") }
+        if (activeWeek != null || c.weekNotes.isNotEmpty()) {
+            Panel {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("按周备注", fontWeight = FontWeight.Medium)
+                    if (activeWeek != null) {
+                        TextButton(onClick = {
+                            weekNoteDraft = c.weekNotes[activeWeek].orEmpty()
+                            editWeekNoteFor = activeWeek
+                        }) {
+                            Text(if (c.weekNotes[activeWeek].isNullOrBlank()) "添加第${activeWeek}周备注" else "编辑第${activeWeek}周")
+                        }
+                    }
+                }
+                if (activeWeek != null && !c.weekNotes[activeWeek].isNullOrBlank()) {
+                    Text("第${activeWeek}周：${c.weekNotes[activeWeek]}")
+                }
+                c.weekNotes.toSortedMap().forEach { (w, text) ->
+                    if (w != activeWeek && text.isNotBlank()) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Muted("第${w}周：$text")
+                            TextButton(onClick = {
+                                weekNoteDraft = text
+                                editWeekNoteFor = w
+                            }) { Text("修改") }
+                        }
+                    }
+                }
+            }
+        }
+        editWeekNoteFor?.let { targetWeek ->
+            AlertDialog(
+                onDismissRequest = { editWeekNoteFor = null },
+                title = { Text("第${targetWeek}周课程备注") },
+                text = {
+                    Field(weekNoteDraft, { weekNoteDraft = it }, "仅在第${targetWeek}周展示", multi = true)
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val trimmed = weekNoteDraft.trim()
+                        val updatedNotes =
+                            if (trimmed.isEmpty()) c.weekNotes - targetWeek
+                            else c.weekNotes + (targetWeek to trimmed)
+                        vm.course(s, c.copy(weekNotes = updatedNotes), sessions, {})
+                        editWeekNoteFor = null
+                    }) { Text("保存") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { editWeekNoteFor = null }) { Text("取消") }
+                },
+            )
+        }
         occurrences.forEach { o ->
             Action("调整 ${o.date} ${o.start} 的课程", "取消、移动或修改这一次课程") {
                 nav("adjust:${o.session.id}:${CourseEngine.originalDate(o)}")
@@ -546,9 +608,11 @@ fun ScheduleEditor(s: Schedule?, vm: VanViewModel, back: () -> Unit) {
 
 @Composable
 fun DayAdjustments(s: Schedule, vm: VanViewModel) {
+    val state by vm.state.collectAsStateWithLifecycle()
     var date by rememberSaveable { mutableStateOf(LocalDate.now(ZoneId.of(s.zone)).toString()) }
     var source by rememberSaveable { mutableStateOf("") }
     var stop by rememberSaveable { mutableStateOf(false) }
+    var globalFollow by rememberSaveable { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var byWeek by rememberSaveable { mutableStateOf(false) }
     var targetWeek by rememberSaveable {
@@ -602,7 +666,13 @@ fun DayAdjustments(s: Schedule, vm: VanViewModel) {
                     .getOrNull()
             if (preview != null) Muted(preview)
         }
-        Muted("仅调整当前课表；学校安排需要手动填写。整日替换读取来源日期的原始课表。")
+        Toggle(
+            "调休跟随绝对日期（跨课表生效）",
+            globalFollow,
+            { globalFollow = it },
+            "开启后，切换其他课表时该日期仍按此次调休上对应日期的课",
+        )
+        Muted("仅调整整日安排时，整日替换读取来源日期的原始课表。")
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         Button(
             onClick = {
@@ -624,7 +694,16 @@ fun DayAdjustments(s: Schedule, vm: VanViewModel) {
                             s.copy(dayOverrides = s.dayOverrides.filterNot { it.date == to } + r)
                         Validation.requireValid(candidate)
                         error = ""
-                        vm.save(candidate)
+                        if (globalFollow) {
+                            vm.prefs { prefs ->
+                                prefs.copy(
+                                    globalDayOverrides =
+                                        prefs.globalDayOverrides.filterNot { it.date == to } + r
+                                )
+                            }
+                        } else {
+                            vm.save(candidate)
+                        }
                     }
                     .onFailure { error = it.message.orEmpty() }
             },
@@ -632,7 +711,16 @@ fun DayAdjustments(s: Schedule, vm: VanViewModel) {
         ) {
             Text("保存整日安排")
         }
-        Text("已有调整", fontWeight = FontWeight.Medium)
+        Text("全局调休（跨课表跟随绝对日期）", fontWeight = FontWeight.Medium)
+        if (state.preferences.globalDayOverrides.isEmpty()) Muted("暂无全局调休")
+        state.preferences.globalDayOverrides
+            .sortedBy { it.date }
+            .forEach { r ->
+                Action("${r.date} ${if (r.cancelled) "全局停课" else "上 ${r.sourceDate} 的课"}", "跨课表生效 · 点击撤销") {
+                    vm.prefs { prefs -> prefs.copy(globalDayOverrides = prefs.globalDayOverrides - r) }
+                }
+            }
+        Text("当前课表已有调整", fontWeight = FontWeight.Medium)
         s.dayOverrides
             .sortedBy { it.date }
             .forEach { r ->

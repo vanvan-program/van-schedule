@@ -4,6 +4,7 @@ package app.van.timetable
 import android.app.Application
 import app.van.timetable.data.Store
 import app.van.timetable.system.Scheduler
+import app.van.timetable.widget.WidgetMonetHelper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -15,6 +16,7 @@ class VanApplication : Application() {
     @OptIn(FlowPreview::class)
     override fun onCreate() {
         super.onCreate()
+        WidgetMonetHelper.installWallpaperObserver(this)
         scope.launch {
             combine(store.schedules, store.preferences) { schedules, preferences ->
                     schedules to preferences

@@ -3,7 +3,6 @@ package app.van.timetable.ui
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -11,13 +10,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.van.timetable.domain.*
+import app.van.timetable.ui.nexio.MotionText
+import com.haooz.softglass.shape.ContinuousRoundedRectangle
 import java.time.*
 
 @Composable
 fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Surface(
         modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = ContinuousRoundedRectangle(20.dp),
         color = LocalVan.current.surface,
     ) {
         Column(
@@ -30,7 +31,7 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
 
 @Composable
 fun Muted(text: String) {
-    Text(text, color = LocalVan.current.muted, fontSize = 13.sp)
+    MotionText(text, color = LocalVan.current.muted, fontSize = 13.sp)
 }
 
 @Composable
@@ -47,7 +48,7 @@ fun Field(
         label = { Text(label) },
         modifier = modifier.fillMaxWidth(),
         singleLine = !multi,
-        shape = RoundedCornerShape(14.dp),
+        shape = ContinuousRoundedRectangle(14.dp),
     )
 }
 
@@ -66,7 +67,7 @@ fun Toggle(title: String, value: Boolean, onChange: (Boolean) -> Unit, descripti
 fun Action(title: String, description: String = "", onClick: () -> Unit) {
     Surface(
         Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = ContinuousRoundedRectangle(16.dp),
         color = LocalVan.current.surface,
     ) {
         Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -103,7 +104,7 @@ fun CourseRow(
     val current = !inactive && now >= o.startsAt(zone) && now < o.endsAt(zone)
     Surface(
         Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = ContinuousRoundedRectangle(16.dp),
         color = if (inactive) c.inactive else c.surface,
         contentColor = if (inactive) c.inactiveText else c.text,
     ) {
@@ -113,7 +114,7 @@ fun CourseRow(
                     .height(66.dp)
                     .background(
                         if (inactive) c.inactiveText else c.courseColor(o.course),
-                        RoundedCornerShape(3.dp),
+                        ContinuousRoundedRectangle(3.dp),
                     )
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -33,13 +33,14 @@ class LicenseActivity : ComponentActivity() {
                         .padding(16.dp)
                 ) {
                     TextButton(onClick = { finish() }) { Text("返回") }
-                    Text("van课表 GPL-3.0-only")
+                    Text("van课表 (GPL-3.0-only) · 含 NexioSchedule (AGPL-3.0) 与 softglass (Apache-2.0) 移植组件")
                     Text(
-                        "Kotlin、kotlinx、AndroidX、Compose、Material、Tesseract4Android及中文英文识别模型：Apache-2.0。JExcelAPI：LGPL-2.1。原生识别库依赖的许可见第三方声明。此工程未复制GPL／AGPL竞品代码。",
+                        "Kotlin、kotlinx、AndroidX、Compose、Material、softglass、Tesseract4Android及中文英文识别模型：Apache-2.0。JExcelAPI：LGPL-2.1。部分视觉动效、渐进模糊、滑选菜单、中文自然排序与小组件莫奈取色参考/移植自 NexioSchedule（AGPL-3.0）。",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row(Modifier.horizontalScroll(rememberScrollState())) {
                         TextButton(onClick = { selected = "GPL-3.0.txt" }) { Text("GPL-3.0") }
+                        TextButton(onClick = { selected = "AGPL-3.0.txt" }) { Text("AGPL-3.0") }
                         TextButton(onClick = { selected = "Apache-2.0.txt" }) { Text("Apache-2.0") }
                         TextButton(onClick = { selected = "LGPL-2.1.txt" }) { Text("LGPL-2.1") }
                         TextButton(onClick = { selected = "tesseract-native-notices.txt" }) {

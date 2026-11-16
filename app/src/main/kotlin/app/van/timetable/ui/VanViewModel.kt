@@ -25,7 +25,17 @@ data class VanState(
 class VanViewModel(app: Application) : AndroidViewModel(app) {
     val store = (app as VanApplication).store
     val state =
-        combine(store.schedules, store.preferences) { s, p -> VanState(s, p, true) }
+        combine(store.schedules, store.preferences) { s, p ->
+                val indexMap = p.scheduleOrder.withIndex().associate { it.value to it.index }
+                val ordered =
+                    if (indexMap.isEmpty()) s
+                    else
+                        s.sortedWith(
+                            compareBy<Schedule> { indexMap[it.id] ?: Int.MAX_VALUE }
+                                .thenBy { s.indexOf(it) }
+                        )
+                VanState(ordered, p, true)
+            }
             .stateIn(viewModelScope, SharingStarted.Eagerly, VanState())
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val busy = MutableStateFlow(false)
@@ -61,6 +71,30 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
     fun prefs(transform: (Preferences) -> Preferences) = work { store.updatePreferences(transform) }
 
     fun delete(id: String) = work { store.delete(id) }
+
+    fun moveSchedule(id: String, delta: Int) = work {
+        val current = store.all()
+        val p = store.prefs()
+        val indexMap = p.scheduleOrder.withIndex().associate { it.value to it.index }
+        val ordered =
+            current
+                .sortedWith(
+                    compareBy<Schedule> { indexMap[it.id] ?: Int.MAX_VALUE }
+                        .thenBy { current.indexOf(it) }
+                )
+                .map { it.id }
+                .toMutableList()
+        val from = ordered.indexOf(id)
+        val to = (from + delta).coerceIn(0, ordered.lastIndex)
+        if (from >= 0 && to != from) {
+            val item = ordered.removeAt(from)
+            ordered.add(to, item)
+            store.updatePreferences { it.copy(scheduleOrder = ordered) }
+        }
+    }
+
+    fun startNewSemester(schedule: Schedule, week1Monday: String, maxWeeks: Int, newName: String) =
+        save(CourseEngine.startNewSemester(schedule, week1Monday, maxWeeks, newName), activate = true)
 
     fun refreshWidgets() =
         viewModelScope.launch(Dispatchers.IO) {

@@ -16,9 +16,10 @@ import androidx.compose.ui.unit.dp
 import app.van.timetable.domain.*
 import java.time.LocalTime
 
-private fun encodeSections(sections: List<Section>) = sections.joinToString("\n") { "${it.start},${it.end}" }
+private fun encodeSections(sections: List<Section>) = sections.joinToString("\n") { "${it.start},${it.end},${it.label.replace("\n", " ")}" }
 private fun decodeSections(value: String) = value.lines().mapIndexed { i, line ->
-    Section(i + 1, line.substringBefore(','), line.substringAfter(','))
+    val parts = line.split(',', limit = 3)
+    Section(i + 1, parts.getOrNull(0).orEmpty(), parts.getOrNull(1).orEmpty(), parts.getOrNull(2).orEmpty())
 }
 
 @Composable
@@ -68,6 +69,21 @@ fun Routines(s: Schedule, onSave: (Schedule) -> Unit) {
             }, label = { Text(r.name) }, colors = vanSelectionColors()) }
         }
         Field(name, { name = it; message = "" }, "作息名称")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (s.activeRoutineId == selected || (s.activeRoutineId == null && selected == s.routines.first().id))
+                    "当前设为默认作息（未匹配日期规则时使用）"
+                else "未设作息规则时可使用默认作息",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalVan.current.muted,
+            )
+            if (s.activeRoutineId != selected) {
+                TextButton(onClick = { onSave(s.copy(activeRoutineId = selected)) }) {
+                    Text("设为默认作息")
+                }
+            }
+        }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("每天 ${sections.size} 节", Modifier.weight(1f), fontWeight = FontWeight.Medium)
             IconButton(onClick = {
@@ -88,7 +104,10 @@ fun Routines(s: Schedule, onSave: (Schedule) -> Unit) {
             sections.forEach { section ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag("routine-section-${section.number}")
                     .clickable { editing = section.number }, verticalAlignment = Alignment.CenterVertically) {
-                    Text("第${section.number}节", Modifier.weight(1f))
+                    Text(
+                        if (section.label.isNotBlank()) "第${section.number}节（${section.label}）" else "第${section.number}节",
+                        Modifier.weight(1f),
+                    )
                     Text("${section.start}–${section.end}", color = LocalVan.current.muted)
                     Icon(Icons.Outlined.ChevronRight, contentDescription = "编辑第${section.number}节")
                 }
@@ -124,6 +143,7 @@ private fun SectionTimeDialog(section: Section, sections: List<Section>, onDismi
     var startMinute by rememberSaveable(section.number) { mutableIntStateOf(first.minute) }
     var endHour by rememberSaveable(section.number) { mutableIntStateOf(last.hour) }
     var endMinute by rememberSaveable(section.number) { mutableIntStateOf(last.minute) }
+    var customLabel by rememberSaveable(section.number) { mutableStateOf(section.label) }
     val start = LocalTime.of(startHour, startMinute)
     val end = LocalTime.of(endHour, endMinute)
     val previous = sections.getOrNull(section.number - 2)?.end?.let(LocalTime::parse)
@@ -144,10 +164,11 @@ private fun SectionTimeDialog(section: Section, sections: List<Section>, onDismi
                     Column(Modifier.weight(1f)) { Text("分"); NumberWheel(endMinute, 0, 59, "结束分钟", "routine-end-minute") { endMinute = it } }
                 }
                 Text("$start – $end")
+                Field(customLabel, { customLabel = it }, "自定义节次名称（可选，如早读/午休）")
                 if (error != null) Text(error, color = MaterialTheme.colorScheme.error)
             }
         },
-        confirmButton = { TextButton(enabled = error == null, onClick = { onSave(section.copy(start = start.toString(), end = end.toString())) }, modifier = Modifier.testTag("save-section-time")) { Text("确定时间") } },
+        confirmButton = { TextButton(enabled = error == null, onClick = { onSave(section.copy(start = start.toString(), end = end.toString(), label = customLabel.trim())) }, modifier = Modifier.testTag("save-section-time")) { Text("确定时间") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

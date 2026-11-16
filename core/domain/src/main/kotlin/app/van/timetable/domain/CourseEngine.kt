@@ -34,6 +34,7 @@ object CourseEngine {
         schedule.routineRules
             .firstOrNull { date >= LocalDate.parse(it.from) && date <= LocalDate.parse(it.through) }
             ?.let { rule -> schedule.routines.first { it.id == rule.routineId } }
+            ?: schedule.activeRoutineId?.let { id -> schedule.routines.firstOrNull { it.id == id } }
             ?: schedule.routines.first()
 
     fun dateAt(schedule: Schedule, week: Int, day: Int): LocalDate {
@@ -80,20 +81,30 @@ object CourseEngine {
             }
     }
 
-    private fun planned(schedule: Schedule, date: LocalDate): List<Occurrence> {
-        val rule = schedule.dayOverrides.firstOrNull { it.date == date.toString() }
+    private fun planned(
+        schedule: Schedule,
+        date: LocalDate,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): List<Occurrence> {
+        val rule =
+            schedule.dayOverrides.firstOrNull { it.date == date.toString() }
+                ?: globalDayOverrides.firstOrNull { it.date == date.toString() }
         if (rule?.cancelled == true) return emptyList()
         return raw(schedule, rule?.sourceDate?.let(LocalDate::parse) ?: date, date)
     }
 
-    fun resolveDay(schedule: Schedule, date: LocalDate): List<Occurrence> {
+    fun resolveDay(
+        schedule: Schedule,
+        date: LocalDate,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): List<Occurrence> {
         if (holiday(schedule, date) != null) return emptyList()
         val local =
             schedule.sessionOverrides
                 .filter { it.originalDate == date.toString() }
                 .associateBy { it.sessionId }
         val result =
-            planned(schedule, date)
+            planned(schedule, date, globalDayOverrides)
                 .mapNotNull { o ->
                     val override = local[o.session.id] ?: return@mapNotNull o
                     if (
@@ -111,7 +122,7 @@ object CourseEngine {
                     it.originalDate != date.toString()
             }
             .forEach { override ->
-                planned(schedule, LocalDate.parse(override.originalDate))
+                planned(schedule, LocalDate.parse(override.originalDate), globalDayOverrides)
                     .firstOrNull { it.session.id == override.sessionId }
                     ?.let { original ->
                         val newRoutine = routine(schedule, date)
@@ -145,12 +156,270 @@ object CourseEngine {
     }
 
     // Display-only preview. Widgets, reminders and next-course calculations use resolveDay.
-    fun timetableDay(schedule: Schedule, date: LocalDate): List<Occurrence> =
+    fun timetableDay(
+        schedule: Schedule,
+        date: LocalDate,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): List<Occurrence> =
         resolveDay(
             if (holiday(schedule, date) != null) schedule.copy(holidays = emptyList())
             else schedule,
             date,
+            globalDayOverrides,
         )
+
+    fun effectiveDisplayWeek(
+        schedule: Schedule,
+        date: LocalDate,
+        autoSkipEmptyWeekend: Boolean,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): Int {
+        val current = week(schedule, date).coerceIn(1, schedule.maxWeeks)
+        if (!autoSkipEmptyWeekend) return current
+        if (date.dayOfWeek != DayOfWeek.SATURDAY && date.dayOfWeek != DayOfWeek.SUNDAY) {
+            return current
+        }
+        val sat = dateAt(schedule, current, 6)
+        val sun = dateAt(schedule, current, 7)
+        val weekendEmpty =
+            resolveDay(schedule, sat, globalDayOverrides).isEmpty() &&
+                resolveDay(schedule, sun, globalDayOverrides).isEmpty()
+        return if (weekendEmpty && current < schedule.maxWeeks) current + 1 else current
+    }
+
+    fun startNewSemester(
+        schedule: Schedule,
+        week1Monday: String,
+        maxWeeks: Int = schedule.maxWeeks,
+        newName: String = schedule.name,
+    ): Schedule =
+        schedule.copy(
+            name = newName.trim().ifBlank { schedule.name },
+            week1Monday = week1Monday,
+            maxWeeks = maxWeeks,
+            courses = emptyList(),
+            sessions = emptyList(),
+            dayOverrides = emptyList(),
+            sessionOverrides = emptyList(),
+            holidays = emptyList(),
+        )
+
+    fun slotConflicts(
+        schedule: Schedule,
+        week: Int,
+        day: Int,
+        startSection: Int,
+        endSection: Int,
+        excludeSessionId: String? = null,
+    ): List<CourseSession> {
+        val date = dateAt(schedule, week, day)
+        val routine = routine(schedule, date)
+        val targetStart =
+            routine.sections.firstOrNull { it.number == startSection }?.start?.let(LocalTime::parse)
+        val targetEnd =
+            routine.sections.firstOrNull { it.number == endSection }?.end?.let(LocalTime::parse)
+        return schedule.sessions.filter { s ->
+            s.id != excludeSessionId &&
+                s.date == null &&
+                s.day == day &&
+                week in s.weeks &&
+                when (s.mode) {
+                    TimeMode.SECTIONS -> s.startSection <= endSection && s.endSection >= startSection
+                    TimeMode.CLOCK ->
+                        targetStart != null &&
+                            targetEnd != null &&
+                            LocalTime.parse(s.start) < targetEnd &&
+                            LocalTime.parse(s.end) > targetStart
+                    TimeMode.UNTIMED -> false
+                }
+        }
+    }
+
+    private fun isMergeableSession(a: CourseSession, b: CourseSession): Boolean =
+        a.courseId == b.courseId &&
+            a.mode == TimeMode.SECTIONS &&
+            b.mode == TimeMode.SECTIONS &&
+            a.date == null &&
+            b.date == null &&
+            a.teacher == b.teacher &&
+            a.place == b.place
+
+    fun moveSessionForWeek(
+        schedule: Schedule,
+        sessionId: String,
+        fromWeek: Int,
+        targetWeek: Int,
+        targetDay: Int,
+        targetStartSection: Int,
+        targetEndSection: Int,
+    ): Schedule {
+        val source = schedule.sessions.firstOrNull { it.id == sessionId } ?: return schedule
+        if (source.mode != TimeMode.SECTIONS || source.date != null) return schedule
+        if (fromWeek !in source.weeks) return schedule
+        val sameSlot =
+            source.day == targetDay &&
+                source.startSection == targetStartSection &&
+                source.endSection == targetEndSection
+        if (sameSlot && fromWeek == targetWeek) return schedule
+
+        val updatedSessions = schedule.sessions.toMutableList()
+        val sourceIdx = updatedSessions.indexOfFirst { it.id == sessionId }
+        val existingMerge =
+            updatedSessions.indexOfFirst {
+                it.id != sessionId &&
+                    it.day == targetDay &&
+                    it.startSection == targetStartSection &&
+                    it.endSection == targetEndSection &&
+                    isMergeableSession(it, source)
+            }
+
+        if (sameSlot) {
+            if (targetWeek in source.weeks) return schedule
+            updatedSessions[sourceIdx] = source.copy(weeks = (source.weeks - fromWeek) + targetWeek)
+        } else if (existingMerge >= 0) {
+            val target = updatedSessions[existingMerge]
+            updatedSessions[existingMerge] = target.copy(weeks = target.weeks + targetWeek)
+            val remainingWeeks = source.weeks - fromWeek
+            if (remainingWeeks.isEmpty()) updatedSessions.removeAt(sourceIdx)
+            else updatedSessions[sourceIdx] = source.copy(weeks = remainingWeeks)
+        } else if (source.weeks.size == 1) {
+            updatedSessions[sourceIdx] =
+                source.copy(
+                    day = targetDay,
+                    startSection = targetStartSection,
+                    endSection = targetEndSection,
+                    weeks = setOf(targetWeek),
+                )
+        } else {
+            updatedSessions[sourceIdx] = source.copy(weeks = source.weeks - fromWeek)
+            updatedSessions +=
+                source.copy(
+                    id = newId(),
+                    day = targetDay,
+                    startSection = targetStartSection,
+                    endSection = targetEndSection,
+                    weeks = setOf(targetWeek),
+                )
+        }
+        val fromDate = dateAt(schedule, fromWeek, source.day).toString()
+        val cleanedOverrides =
+            schedule.sessionOverrides.filterNot {
+                it.sessionId == sessionId && it.originalDate == fromDate
+            }
+        return schedule.copy(sessions = updatedSessions, sessionOverrides = cleanedOverrides)
+    }
+
+    fun overwriteSessionForWeek(
+        schedule: Schedule,
+        sessionId: String,
+        fromWeek: Int,
+        targetWeek: Int,
+        targetDay: Int,
+        targetStartSection: Int,
+        targetEndSection: Int,
+    ): Schedule {
+        val cleaned =
+            schedule.sessions.mapNotNull { s ->
+                if (
+                    s.id != sessionId &&
+                        s.date == null &&
+                        s.mode == TimeMode.SECTIONS &&
+                        s.day == targetDay &&
+                        targetWeek in s.weeks &&
+                        s.startSection <= targetEndSection &&
+                        s.endSection >= targetStartSection
+                ) {
+                    val left = s.weeks - targetWeek
+                    if (left.isEmpty()) null else s.copy(weeks = left)
+                } else s
+            }
+        val validIds = cleaned.map { it.id }.toSet()
+        val intermediate =
+            schedule.copy(
+                sessions = cleaned,
+                sessionOverrides = schedule.sessionOverrides.filter { it.sessionId in validIds },
+            )
+        return moveSessionForWeek(
+            intermediate,
+            sessionId,
+            fromWeek,
+            targetWeek,
+            targetDay,
+            targetStartSection,
+            targetEndSection,
+        )
+    }
+
+    fun swapSessionsForWeek(
+        schedule: Schedule,
+        sourceSessionId: String,
+        sourceWeek: Int,
+        targetSessionId: String,
+        targetWeek: Int,
+    ): Schedule {
+        val src = schedule.sessions.firstOrNull { it.id == sourceSessionId } ?: return schedule
+        val dst = schedule.sessions.firstOrNull { it.id == targetSessionId } ?: return schedule
+        if (src.mode != TimeMode.SECTIONS || dst.mode != TimeMode.SECTIONS) return schedule
+        if (src.date != null || dst.date != null) return schedule
+        if (sourceSessionId == targetSessionId && sourceWeek == targetWeek) return schedule
+
+        val sessions = schedule.sessions.toMutableList()
+        fun removeWeek(id: String, week: Int): CourseSession? {
+            val idx = sessions.indexOfFirst { it.id == id }
+            if (idx < 0) return null
+            val item = sessions[idx]
+            val rest = item.weeks - week
+            if (rest.isEmpty()) sessions.removeAt(idx) else sessions[idx] = item.copy(weeks = rest)
+            return item
+        }
+
+        val srcRemoved = removeWeek(sourceSessionId, sourceWeek) ?: return schedule
+        val dstRemoved = removeWeek(targetSessionId, targetWeek) ?: return schedule
+
+        fun placeWeek(
+            base: CourseSession,
+            week: Int,
+            day: Int,
+            startSection: Int,
+            endSection: Int,
+        ) {
+            val mergeIdx =
+                sessions.indexOfFirst {
+                    it.day == day &&
+                        it.startSection == startSection &&
+                        it.endSection == endSection &&
+                        isMergeableSession(it, base)
+                }
+            if (mergeIdx >= 0) {
+                sessions[mergeIdx] = sessions[mergeIdx].copy(weeks = sessions[mergeIdx].weeks + week)
+            } else {
+                sessions +=
+                    base.copy(
+                        id = if (sessions.none { it.id == base.id }) base.id else newId(),
+                        day = day,
+                        startSection = startSection,
+                        endSection = endSection,
+                        weeks = setOf(week),
+                    )
+            }
+        }
+
+        placeWeek(srcRemoved, targetWeek, dstRemoved.day, dstRemoved.startSection, dstRemoved.endSection)
+        placeWeek(dstRemoved, sourceWeek, srcRemoved.day, srcRemoved.startSection, srcRemoved.endSection)
+
+        val srcDate = dateAt(schedule, sourceWeek, srcRemoved.day).toString()
+        val dstDate = dateAt(schedule, targetWeek, dstRemoved.day).toString()
+        val validIds = sessions.map { it.id }.toSet()
+        return schedule.copy(
+            sessions = sessions,
+            sessionOverrides =
+                schedule.sessionOverrides.filter {
+                    it.sessionId in validIds &&
+                        !(it.sessionId == sourceSessionId && it.originalDate == srcDate) &&
+                        !(it.sessionId == targetSessionId && it.originalDate == dstDate)
+                },
+        )
+    }
 
     private fun apply(o: Occurrence, rule: SessionOverride, date: LocalDate) =
         o.copy(
@@ -162,12 +431,23 @@ object CourseEngine {
             adjusted = true,
         )
 
-    fun remaining(schedule: Schedule, now: Instant): List<Occurrence> =
-        resolveDay(schedule, now.atZone(ZoneId.of(schedule.zone)).toLocalDate()).filter {
-            it.endsAt(ZoneId.of(schedule.zone)) > now
-        }
+    fun remaining(
+        schedule: Schedule,
+        now: Instant,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): List<Occurrence> =
+        resolveDay(
+                schedule,
+                now.atZone(ZoneId.of(schedule.zone)).toLocalDate(),
+                globalDayOverrides,
+            )
+            .filter { it.endsAt(ZoneId.of(schedule.zone)) > now }
 
-    fun next(schedule: Schedule, now: Instant): Occurrence? {
+    fun next(
+        schedule: Schedule,
+        now: Instant,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): Occurrence? {
         val date = now.atZone(ZoneId.of(schedule.zone)).toLocalDate()
         val last =
             maxOf(
@@ -180,7 +460,8 @@ object CourseEngine {
         var d = date
         while (d <= last) {
             val zone = ZoneId.of(schedule.zone)
-            val available = resolveDay(schedule, d).filter { it.endsAt(zone) > now }
+            val available =
+                resolveDay(schedule, d, globalDayOverrides).filter { it.endsAt(zone) > now }
             val ongoing = available.filter { it.startsAt(zone) <= now }
             val pool = ongoing.ifEmpty { available }
             pool.firstOrNull()?.let { first ->
@@ -239,7 +520,12 @@ object Validation {
                 "自定义颜色必须为不透明颜色",
             )
             check(it.leadMinutes == null || it.leadMinutes in 0..1440, "提醒提前量无效")
+            check(it.weekNotes.keys.all { w -> w in 1..s.maxWeeks }, "按周备注周次超出学期")
         }
+        check(
+            s.activeRoutineId == null || s.routines.any { it.id == s.activeRoutineId },
+            "默认作息关联不存在",
+        )
         check(s.routines.map { it.id }.distinct().size == s.routines.size, "作息ID重复")
         s.routines.forEach { r ->
             check(r.sections.isNotEmpty(), "${r.name}作息为空")

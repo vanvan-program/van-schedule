@@ -1,6 +1,6 @@
 # Third-party notices
 
-van课表 authored code is GPL-3.0-only. No GPL/AGPL competitor source has been copied.
+van课表 original authored code is GPL-3.0-only. Portions of visual, interaction, and widget enhancement code are ported from NexioSchedule (`HaoZai000/NexioSchedule`, AGPL-3.0-only) and integrated with `softglass` (`HaoZai000/softglass`, Apache-2.0); combined distribution must comply with AGPL-3.0 where applicable.
 
 The unmodified Xiaomi XMS Wearable SDK 1.4 is obtained from Xiaomi's published
 interconnect development demo, not authored or relicensed by this project.

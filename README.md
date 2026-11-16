@@ -1,11 +1,19 @@
 # van课表
 
-原生 Android 本地课表应用。Kotlin / Compose / Room / DataStore，GPL-3.0-only。
+原生 Android 本地课表应用。Kotlin / Compose / Room / DataStore，GPL-3.0-only（含源自 NexioSchedule 的 AGPL-3.0 移植组件与 Apache-2.0 的 `softglass`）。
 Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 仓库包含源码、构建配置、合成样例与脱敏验证资料。本机工具缓存、构建产物、个人课表原件和签名密钥不属于仓库内容。
 
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
+
+## 0.4.0 柔光玻璃质感、跨周拖拽与莫奈取色
+
+本版版本号 `0.4.0`（`versionCode 40`），在保留 `0.3.4` 全部特性基础上合入视觉材质与交互优化：
+
+- 本地集成 `:softglass` 材质模块与外观看板即时预览，提供柔光玻璃／清透磨砂／无材质切换、Squircle 连续圆角、背景壁纸与卡片光学参数调节、AGSL 渐进模糊顶栏、预测性返回与文字动效。
+- 支持 Android 12+ 莫奈动态配色（含小组件实例独立莫奈开关、正在上课高亮卡片与壁纸变化自动刷新）。
+- 支持周课表长按跨周拖拽调课与冲突覆盖／互换、按周课程备注、自定义节次名称与默认作息、跨课表全局调休、课表排序与开启新学期、日列表时段分组（可关）及中文拼音数字自然排序。
 
 ## 已实现
 

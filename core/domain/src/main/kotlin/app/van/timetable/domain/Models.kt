@@ -13,7 +13,13 @@ enum class TimeMode {
     UNTIMED,
 }
 
-@Serializable data class Section(val number: Int, val start: String, val end: String)
+@Serializable
+data class Section(
+    val number: Int,
+    val start: String,
+    val end: String,
+    val label: String = "",
+)
 
 @Serializable
 data class TimeRoutine(
@@ -44,6 +50,7 @@ data class Course(
     val leadMinutes: Int? = null,
     val parentCourseId: String? = null,
     val customColor: Long? = null,
+    val weekNotes: Map<Int, String> = emptyMap(),
 )
 
 @Serializable
@@ -95,6 +102,7 @@ data class Schedule(
     val sessions: List<CourseSession> = emptyList(),
     val routines: List<TimeRoutine> = listOf(TimeRoutine()),
     val routineRules: List<RoutineRule> = emptyList(),
+    val activeRoutineId: String? = null,
     val dayOverrides: List<DayOverride> = emptyList(),
     val sessionOverrides: List<SessionOverride> = emptyList(),
     val holidays: List<Holiday> = emptyList(),
@@ -118,6 +126,28 @@ data class Preferences(
     // null follows the active timetable; Boolean values are explicit user choices.
     val showCourseGaps: Boolean? = null,
     val showWeekProgress: Boolean = true,
+    val groupDayListByPeriod: Boolean = true,
+    val autoSkipEmptyWeekend: Boolean = true,
+    val globalDayOverrides: List<DayOverride> = emptyList(),
+    val scheduleOrder: List<String> = emptyList(),
+    val materialLevel: String = "soft",
+    val trueProgressiveBlur: Boolean = true,
+    val monetColor: Boolean = true,
+    val predictiveBack: Boolean = true,
+    val textMotionBlur: Boolean = true,
+    val cardTintStrength: Float = 0.72f,
+    val cardOpacity: Float = 0.78f,
+    val cardBlurDp: Float = 16f,
+    val cardRefraction: Float = 0.85f,
+    val cardCornerDp: Float = 10f,
+    val cardAlignment: String = "center",
+    val cardTextColorMode: String = "auto",
+    val cardTextScale: Float = 1f,
+    val showCardPlace: Boolean = true,
+    val showCardTeacher: Boolean = false,
+    val wallpaperUri: String = "",
+    val wallpaperBrightness: Float = 0.92f,
+    val wallpaperBlurDp: Float = 0f,
 )
 
 @Serializable
