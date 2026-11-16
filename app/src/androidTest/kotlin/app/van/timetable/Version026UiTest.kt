@@ -86,14 +86,14 @@ class Version026UiTest {
         ui.onNodeWithTag("clear-once-date").performScrollTo().assertExists()
         ui.activityRule.scenario.recreate()
         ui.onNodeWithTag("clear-once-date").performScrollTo().performClick()
-        ui.onNodeWithTag("start-section").performScrollTo().performClick()
-        ui.onNodeWithText("选择上课节次").assertExists()
+        ui.onNodeWithTag("course-time").performScrollTo().performClick()
+        ui.onNodeWithText("选择上课时间").assertExists()
         ui.onNodeWithTag("start-section-wheel").performTouchInput { swipeUp(durationMillis = 400) }
         ui.onNodeWithTag("end-section-wheel").performTouchInput { swipeUp(durationMillis = 400) }
         ui.waitForIdle()
         screenshot("026-section-wheels.png")
-        ui.onNodeWithText("确定节次").performClick()
-        ui.onNodeWithTag("start-section").performClick()
+        ui.onNodeWithText("保存上课时间").performClick()
+        ui.onNodeWithTag("course-time").performClick()
         ui.onNodeWithText("取消").performClick()
         ui.onNodeWithText("保存课程").performScrollTo().performClick()
         waitSaved { read(s.id).sessions.single().startSection != 1 }
@@ -146,6 +146,7 @@ class Version026UiTest {
         ui.onNodeWithText("帮助与关于").performScrollTo().performClick()
         ui.onNodeWithText("历史版本更新").performScrollTo().performClick()
         ui.onNodeWithTag("changelog-list").assertExists()
+        ui.onNodeWithTag("changelog-list").performScrollToNode(hasText("0.2.6 紧凑课表与课程操作"))
         ui.onNodeWithText("0.2.6 紧凑课表与课程操作").assertExists()
         screenshot("026-changelog.png")
         ui.onNodeWithTag("changelog-list").performScrollToNode(hasText("0.1.2 教务网址输入与备份兼容"))

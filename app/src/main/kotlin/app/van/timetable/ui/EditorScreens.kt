@@ -34,6 +34,7 @@ fun Detail(
     originalDate: String? = null,
 ) {
     var delete by remember { mutableStateOf(false) }
+    var deleteRelated by remember { mutableStateOf<Course?>(null) }
     var editNote by rememberSaveable(c.id) { mutableStateOf(false) }
     var noteDraft by rememberSaveable(c.id) { mutableStateOf("") }
     val saving by vm.busy.collectAsStateWithLifecycle()
@@ -41,6 +42,10 @@ fun Detail(
     LaunchedEffect(s.id, c.id) { vm.refreshWidgets() }
     val state by vm.state.collectAsStateWithLifecycle()
     val sessions = s.sessions.filter { it.courseId == c.id }
+    val members = remember(s, c.id, date) {
+        if (date == null) s.courseGroups().firstOrNull { it.primary.id == c.id }?.members ?: listOf(c)
+        else listOf(c)
+    }
     val occurrences =
         date
             ?.let {
@@ -82,19 +87,29 @@ fun Detail(
                 modifier = Modifier.testTag("edit-course-note"),
             ) { Text(if (c.note.isBlank()) "添加课程备注" else "编辑课程备注") }
         }
-        Panel {
-            if (sessions.isEmpty()) Muted("上课时间待定，可编辑课程补充日期或周次。")
-            sessions.forEach { n ->
-                Text(
-                    n.date ?: if (n.day in 1..7) weekdays[n.day - 1] else "整周实践",
-                    fontWeight = FontWeight.Medium,
-                )
-                Muted(
-                    if (n.mode == TimeMode.SECTIONS) "第${n.startSection}–${n.endSection}节"
-                    else if (n.mode == TimeMode.CLOCK) "${n.start}–${n.end}" else "无固定时间"
-                )
-                if (n.date == null) Muted("周次：${formatWeeks(n.weeks)}")
-                Muted("${n.teacher} · ${n.place}")
+        members.forEach { member ->
+            val memberSessions = s.sessions.filter { it.courseId == member.id }
+            Panel(Modifier.testTag("course-section-${member.id}")) {
+                Text(member.groupSectionLabel(), fontWeight = FontWeight.SemiBold, color = LocalVan.current.blue)
+                if (member.id != c.id) Text(member.name, fontWeight = FontWeight.Medium)
+                if (memberSessions.isEmpty()) Muted("上课时间待定，可编辑课程补充日期或周次。")
+                memberSessions.forEachIndexed { index, n ->
+                    if (index > 0) HorizontalDivider()
+                    Text(n.date ?: if (n.day in 1..7) weekdays[n.day - 1] else "整周实践", fontWeight = FontWeight.Medium)
+                    Muted(if (n.mode == TimeMode.SECTIONS) "第${n.startSection}–${n.endSection}节"
+                        else if (n.mode == TimeMode.CLOCK) "${n.start}–${n.end}" else "无固定时间")
+                    if (n.date == null) Muted("周次：${formatWeeks(n.weeks)}")
+                    Muted(listOf(n.teacher, n.place).filter { it.isNotBlank() }.joinToString(" · "))
+                }
+                if (member.id != c.id) {
+                    if (member.note.isNotBlank()) SelectionContainer { Text(member.note) }
+                    Toggle("${member.groupSectionLabel()}提醒", member.reminder,
+                        { vm.course(s, member.copy(reminder = it), memberSessions, {}) })
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { nav("edit:${member.id}") }) { Text("编辑${member.groupSectionLabel()}") }
+                        TextButton(onClick = { deleteRelated = member }) { Text("删除${member.groupSectionLabel()}", color = MaterialTheme.colorScheme.error) }
+                    }
+                }
             }
         }
         Panel {
@@ -163,6 +178,11 @@ fun Detail(
             Text("删除课程", color = MaterialTheme.colorScheme.error)
         }
     }
+    deleteRelated?.let { related ->
+        Confirm("删除${related.groupSectionLabel()}", "将删除“${related.name}”的全部时段与单次调整，正课及其他关联课程保留。", { deleteRelated = null }) {
+            vm.deleteCourse(s, related.id) { deleteRelated = null }
+        }
+    }
     if (editNote) CourseNoteDialog(
         value = noteDraft,
         onChange = { noteDraft = it },
@@ -171,7 +191,7 @@ fun Detail(
         onDismiss = { editNote = false },
     )
     if (delete)
-        Confirm("删除课程", "将删除“${c.name}”的全部时段和单次调整，并取消相关提醒。", { delete = false }) {
+        Confirm("删除课程", "将删除“${c.name}”的全部时段和单次调整，并取消相关提醒。" + if (members.size > 1) "关联的实验课和考试将保留为独立课程。" else "", { delete = false }) {
             vm.deleteCourse(s, c.id, back)
         }
     deleteOccurrence?.let { o ->
@@ -316,13 +336,14 @@ fun CourseEditor(
                         if (parent != null)
                             SlotForm(
                                 day = today.dayOfWeek.value.toString(),
+                                last = minOf(2, s.routines.minOf { it.sections.size }).toString(),
                                 weeks = "",
                                 date = today.toString(),
                                 teacher = teacher,
                                 mode =
                                     if (eventKind == "期末考试") TimeMode.CLOCK else TimeMode.SECTIONS,
                             )
-                        else SlotForm(weeks = "1-${s.maxWeeks}")
+                        else SlotForm(weeks = "1-${s.maxWeeks}", last = minOf(2, s.routines.minOf { it.sections.size }).toString())
                     )
                 }
                 .toMutableStateList()
@@ -374,7 +395,8 @@ fun CourseEditor(
                         TimeMode.entries.forEach { mode ->
                             FilterChip(
                                 slot.mode == mode,
-                                { slots[i] = slot.copy(mode = mode) },
+                                { slots[i] = slot.copy(mode = mode,
+                                    day = if (mode != TimeMode.UNTIMED && slot.day == "0") "1" else slot.day) },
                                 label = {
                                     Text(
                                         when (mode) {
@@ -387,17 +409,19 @@ fun CourseEditor(
                             )
                         }
                     }
-                    Field(slot.day, { slots[i] = slot.copy(day = it) }, "星期（1–7，整周实践可填0）")
-                    Field(slot.weeks, { slots[i] = slot.copy(weeks = it) }, "周次，如1-8、11-16单")
                     CalendarDateField("仅一次的日期（可选）", slot.date,
                         { slots[i] = slot.copy(date = it,
+                            day = if (it.isNotBlank()) LocalDate.parse(it).dayOfWeek.value.toString() else slot.day,
                             weeks = if (it.isBlank() && slot.weeks.isBlank()) "1-${s.maxWeeks}" else slot.weeks) }, allowClear = true)
-                    if (slot.mode == TimeMode.SECTIONS) {
-                        SectionRangeField(slot.first.toIntOrNull() ?: 1,
-                            slot.last.toIntOrNull() ?: 2,
-                            s.routines.minOf { it.sections.size }) { first, last ->
-                            slots[i] = slot.copy(first = first.toString(), last = last.toString())
-                        }
+                    if (slot.date.isBlank()) WeekSelectionField(slot.weeks, s.maxWeeks) {
+                        slots[i] = slot.copy(weeks = it)
+                    }
+                    if (slot.date.isBlank() || slot.mode == TimeMode.SECTIONS) CourseTimeField(
+                        slot.day.toIntOrNull() ?: 1, slot.first.toIntOrNull() ?: 1,
+                        slot.last.toIntOrNull() ?: 2, s.routines.minOf { it.sections.size },
+                        slot.mode, slot.date.isNotBlank(),
+                    ) { day, first, last ->
+                        slots[i] = slot.copy(day = day.toString(), first = first.toString(), last = last.toString())
                     }
                     if (slot.mode == TimeMode.CLOCK) {
                         Field(slot.start, { slots[i] = slot.copy(start = it) }, "开始时间 HH:mm")
@@ -411,7 +435,7 @@ fun CourseEditor(
             }
         }
         OutlinedButton(
-            onClick = { slots += SlotForm(weeks = "1-${s.maxWeeks}") },
+            onClick = { slots += SlotForm(weeks = "1-${s.maxWeeks}", last = minOf(2, s.routines.minOf { it.sections.size }).toString()) },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("添加上课时段")
@@ -518,90 +542,6 @@ fun ScheduleEditor(s: Schedule?, vm: VanViewModel, back: () -> Unit) {
         ) {
             candidate?.let { vm.save(it, after = back) }
         }
-}
-
-@Composable
-fun Routines(s: Schedule, onSave: (Schedule) -> Unit) {
-    var selected by remember(s.id) { mutableStateOf(s.routines.first().id) }
-    var name by remember(selected) { mutableStateOf(s.routines.first { it.id == selected }.name) }
-    var text by
-        remember(selected) {
-            mutableStateOf(
-                s.routines
-                    .first { it.id == selected }
-                    .sections
-                    .joinToString("\n") { "${it.number},${it.start},${it.end}" }
-            )
-        }
-    var from by remember { mutableStateOf("") }
-    var through by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf("") }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            s.routines.forEach { r ->
-                FilterChip(selected == r.id, { selected = r.id }, label = { Text(r.name) })
-            }
-        }
-        Field(name, { name = it }, "作息名称")
-        Field(text, { text = it }, "每行：节次,开始时间,结束时间", multi = true)
-        Muted("例如：1,08:00,08:45。需包含所有节次且连续，所有课程用到的节次必须存在。")
-        Field(from, { from = it }, "生效起日（可选 YYYY-MM-DD）")
-        Field(through, { through = it }, "生效末日（可选 YYYY-MM-DD）")
-        s.routineRules.forEach { r ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Muted("${s.routines.first{it.id==r.routineId}.name}: ${r.from} 至 ${r.through}")
-                TextButton(onClick = { onSave(s.copy(routineRules = s.routineRules - r)) }) {
-                    Text("删除规则")
-                }
-            }
-        }
-        if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-        fun build(new: Boolean) {
-            runCatching {
-                    val sections =
-                        text
-                            .lines()
-                            .filter { it.isNotBlank() }
-                            .map { line ->
-                                val parts = line.split(',', '，').map { it.trim() }
-                                require(parts.size == 3) { "每行必须是三项" }
-                                Section(parts[0].toInt(), parts[1], parts[2])
-                            }
-                    val r =
-                        TimeRoutine(
-                            id = if (new) newId() else selected,
-                            name = name,
-                            sections = sections,
-                        )
-                    require((from.isBlank()) == (through.isBlank())) { "生效起止日需同时填写" }
-                    val rules =
-                        s.routineRules +
-                            (if (from.isNotBlank()) listOf(RoutineRule(r.id, from, through))
-                            else emptyList())
-                    val v =
-                        s.copy(
-                            routines =
-                                if (new) s.routines + r
-                                else s.routines.map { if (it.id == selected) r else it },
-                            routineRules = rules,
-                        )
-                    Validation.requireValid(v)
-                    onSave(v)
-                    if (new) selected = r.id
-                }
-                .onFailure { error = it.message.orEmpty() }
-        }
-        Button(onClick = { build(false) }, modifier = Modifier.fillMaxWidth()) { Text("保存当前作息") }
-        OutlinedButton(onClick = { build(true) }, modifier = Modifier.fillMaxWidth()) {
-            Text("保存为另一套作息")
-        }
-    }
 }
 
 @Composable

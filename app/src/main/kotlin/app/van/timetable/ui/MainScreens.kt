@@ -390,6 +390,7 @@ fun Timetable(
                     color = colors.muted,
                 )
         }
+        if (p.showWeekProgress) WeekScrubber(week, s.maxWeeks, actualWeek, ::moveWeek)
     }
     if (selectWeek)
         AlertDialog(
@@ -480,7 +481,9 @@ fun DayList(
 fun Courses(s: Schedule, now: Instant, nav: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var onlyWeek by rememberSaveable { mutableStateOf(false) }
-    val week = CourseEngine.week(s, now.atZone(ZoneId.of(s.zone)).toLocalDate())
+    val today = now.atZone(ZoneId.of(s.zone)).toLocalDate()
+    val week = CourseEngine.week(s, today)
+    val currentMonday = today.minusDays((today.dayOfWeek.value - 1).toLong())
     Column(
         Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -504,20 +507,21 @@ fun Courses(s: Schedule, now: Instant, nav: (String) -> Unit) {
         }
         Field(query, { query = it }, "搜索课程、老师、地点")
         Toggle("只看本周有课", onlyWeek, { onlyWeek = it })
-        val filtered =
-            s.courses.filter { c ->
-                val sessions = s.sessions.filter { it.courseId == c.id }
-                (!onlyWeek || sessions.any { week in it.weeks }) &&
-                    (c.name.contains(query, true) ||
-                        c.note.contains(query, true) ||
-                        sessions.any {
-                            it.teacher.contains(query, true) || it.place.contains(query, true)
-                        })
-            }
+        val groups = remember(s) { s.courseGroups() }
+        val filtered = groups.filter { group ->
+            val ids = group.members.map { it.id }.toSet()
+            val sessions = s.sessions.filter { it.courseId in ids }
+            (!onlyWeek || sessions.any { n ->
+                n.date?.let { runCatching { LocalDate.parse(it) in currentMonday..currentMonday.plusDays(6) }.getOrDefault(false) }
+                    ?: (week in n.weeks)
+            }) && (group.members.any { it.name.contains(query, true) || it.note.contains(query, true) } ||
+                sessions.any { it.teacher.contains(query, true) || it.place.contains(query, true) })
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (filtered.isEmpty()) item { Muted("没有符合条件的课程") }
-            items(filtered, key = { it.id }) { c ->
-                Panel(Modifier.clickable { nav("detail:${c.id}") }) {
+            items(filtered, key = { it.primary.id }) { group ->
+                val c = group.primary
+                Panel(Modifier.testTag("course-group-${c.id}").clickable { nav("detail:${c.id}") }) {
                     Row {
                         Box(
                             Modifier.size(12.dp)
@@ -529,8 +533,9 @@ fun Courses(s: Schedule, now: Instant, nav: (String) -> Unit) {
                         Spacer(Modifier.width(10.dp))
                         Text(c.name, fontWeight = FontWeight.SemiBold)
                     }
+                    if (group.members.size > 1) Muted(group.members.map { it.groupSectionLabel() }.distinct().joinToString(" · "))
                     s.sessions
-                        .filter { it.courseId == c.id }
+                        .filter { n -> group.members.any { it.id == n.courseId } }
                         .forEach { n ->
                             if (n.date == null) Muted("周次：${formatWeeks(n.weeks)}")
                             Muted(

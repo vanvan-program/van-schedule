@@ -10,6 +10,6 @@
 - 覆盖安装新版后运行 `app.van.timetable.ReleaseSmokeTest#optimizedUpgradeKeepsAllSchedulePayloadsAndSettingsAndWidgetProviders`。
 - 运行 `app.van.timetable.ReleaseSmokeTest#optimizedApkRunsBundledChineseOcrThroughJni`，通过已安装 Release 中的 Java/JNI 桥接和内置字库识别合成中英文图片；完整导入编辑流程由应用界面回归覆盖。
 
-旧版快照步骤要求模拟器已有合成课表。仅在专用测试设备执行，不对用户手机课表做自动替换。
+旧版快照步骤默认检查 0.3.0；验证其他升级基线时传入 `-e baselineVersion 0.3.1` 等目标版本。旧版快照步骤要求模拟器已有合成课表。仅在专用测试设备执行，不对用户手机课表做自动替换。
 
 `-PvanReleaseAbis=x86_64` 可构建供模拟器运行的发布包；手机交付使用默认 arm64 包。比较两者 DEX 哈希，可确认它们测试的是同一份裁剪代码。

@@ -136,6 +136,13 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
         }
         Panel {
             Toggle("显示周末", p.showWeekend, { v -> vm.prefs { it.copy(showWeekend = v) } })
+            Toggle(
+                "显示周次进度条",
+                p.showWeekProgress,
+                { v -> vm.prefs { it.copy(showWeekProgress = v) } },
+                "在课表底部拖动切换周次；关闭后仍可左右滑动或点击顶部周次切换",
+                modifier = Modifier.testTag("week-progress-setting"),
+            )
             Toggle("显示非本周课程", p.showInactive, { v -> vm.prefs { it.copy(showInactive = v) } })
             Toggle(
                 "保留课间时间空档",

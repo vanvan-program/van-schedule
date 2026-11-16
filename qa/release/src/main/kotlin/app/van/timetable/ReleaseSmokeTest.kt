@@ -34,7 +34,8 @@ class ReleaseSmokeTest {
     @Test fun captureUpgradeState() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         @Suppress("DEPRECATION")
-        assertEquals("Capture must run against the original APK", "0.3.0",
+        assertEquals("Capture must run against the original APK",
+            InstrumentationRegistry.getArguments().getString("baselineVersion", "0.3.0"),
             context.packageManager.getPackageInfo(context.packageName, 0).versionName)
         val snapshot = persistentState(context)
         assertTrue("Upgrade fixture must contain existing schedules", snapshot.getJSONArray("rows").length() > 0)
