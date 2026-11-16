@@ -7,6 +7,12 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.5.1 底部导航跟随 Nexio
+
+- 底部导航不再是深色实心条：改成浅色悬浮胶囊 + 选中项淡色药丸（选中主题色、未选中次级灰），外面加一层柔和投影。
+- 深色模式用深色表面，壁纸 + 玻璃材质档仍然走折射，不额外叠色。
+- 三个入口（课表 / 课程 / 我的）与滑动指示条的行为不变。
+
 ## 0.5.0 课表界面按 Nexio 重构
 
 本版版本号 `0.5.0`（`versionCode 50`），把课表页的视觉改成 NexioSchedule 那套「近白底 + 极浅色卡片 + 同色系文字」：

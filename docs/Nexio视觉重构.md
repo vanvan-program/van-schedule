@@ -25,7 +25,7 @@ Nexio 的整体观感是「近白底 + 极浅的色块卡 + 同色系文字 + �
 | 地点 / 教师 | 11sp，同色文字，地点带 `@` | 9sp，`place` 无 `@`，教师默认关 | 11sp，`@地点`，教师仍按设置显示 |
 | 卡片间距 | 相邻卡 4dp（各留 2dp） | 4dp | 不变 |
 | 网格线 | 默认不画 | 不画 | 不画 |
-| 底部栏 | 悬浮胶囊（今日 / 课程表）+ 独立圆形按钮 | 现有底部栏 | **本轮未改**，见「还没做的」 |
+| 底部栏 | 浅色悬浮胶囊，选中项是淡色药丸（主题色文字），胶囊外有柔和投影 | 深色实心条（`#243249`）+ 白色文字 + 纯蓝药丸 | 浅色胶囊（深色模式用深色表面）+ 14% 主题色药丸 + 10dp 投影；玻璃材质档仍走折射 |
 
 ## 2. 同色系文字怎么来的
 
@@ -62,21 +62,25 @@ CoursePalette.pastelTextArgb(fill, cardArgb, isDark)
 
 | 项 | 说明 |
 | --- | --- |
-| 底部悬浮胶囊导航 | Nexio 的「今日 / 课程表 + 圆形按钮」形态，涉及 `VanApp` 的整页骨架与返回栈，单列一轮 |
 | 顶栏滚动收缩 | Nexio 用 `CollapsibleTopAppBar` + 渐进模糊，滚动时标题收拢 |
 | 天气徽标 | Nexio 顶栏左侧的天气胶囊，van课表 没有天气数据源 |
+| 底部栏的信息结构 | Nexio 是「今日 / 课程表」两个页签 + 独立圆形设置键；van课表 是课表 / 课程 / 我的三个入口，这一轮只对齐外观（浅色胶囊 + 淡色药丸 + 投影），不改页签数量，避免动到 4 个仪器测试按文字找控件的写法 |
 | 玻璃材质联调 | 柔和风格刻意不走玻璃；壁纸 + 材质档下仍是实色风格的玻璃卡 |
-| 真实观感核对 | **没有设备**：本机 `adb devices` 为空、没有 AVD，改动只做了编译级验证 |
+| 真实观感核对 | 本机没有设备与 AVD（`adb devices` 为空），只做了编译级验证 |
+
+> Nexio 的参考源码树已不在磁盘上（`06_项目实验试用\NexioSchedule` 已不存在），本文的数值来自此前逐文件读取的记录；
+> 底部栏一行是按参考截图的形态实现，没有源码数值可引。
 
 ## 6. 验证
 
 | 项 | 结果 |
 | --- | --- |
-| `:core:domain:test` | 111 项通过（含新增 `PastelCardTest` 7 项） |
+| `:core:domain:test` | 112 项通过（含新增 `PastelCardTest` 8 项） |
 | `:app:testDebugUnitTest` | 27 项通过 |
 | `:app:compileDebugKotlin` | 通过 |
-| `:app:lintDebug` | 0 错误 |
+| `:app:lintDebug` | 0 错误 / 87 警告 / 1 提示（与改造前持平） |
+| `:app:assembleRelease` | 0.5.1（versionCode 51）打包通过 |
 | 真机 / 截图 | 未验证——没有连接设备与模拟器 |
 
 改动文件：`WeekGrid.kt`、`TimetableHeader.kt`、`DayListScreen.kt`、`Components.kt`、`Theme.kt`、`AppearanceScreen.kt`、
-`core/domain/{Models,GridTimeline,CoursePalette}.kt`，新增 `core/domain` 测试 `PastelCardTest.kt`。
+`VanApp.kt`、`VanMotion.kt`、`core/domain/{Models,GridTimeline,CoursePalette}.kt`，新增 `core/domain` 测试 `PastelCardTest.kt`。

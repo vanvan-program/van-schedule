@@ -16,7 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -84,6 +83,7 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
     }
     val density = LocalDensity.current
     val config = LocalConfiguration.current
+    val c = LocalVan.current
     val navMinHeight =
         ((if (config.screenHeightDp < 640) 48f else 54f) * density.fontScale.coerceIn(0.85f, 1.2f))
             .coerceIn(48f, 68f)
@@ -95,16 +95,20 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
             spring(dampingRatio = 0.9f, stiffness = 550f),
             label = "tab-indicator",
         )
+        // Nexio 的底部导航是「浅色胶囊 + 选中项淡色药丸」，不是深底白字的实心色块
         Box(
-            Modifier.offset { IntOffset(indicatorX.value.roundToPx(), 5.dp.roundToPx()) }
-                .size(50.dp, 24.dp)
-                .background(LocalVan.current.blue, ContinuousRoundedRectangle(14.dp))
+            Modifier.offset { IntOffset(indicatorX.value.roundToPx(), 4.dp.roundToPx()) }
+                .size(50.dp, 26.dp)
+                .background(
+                    if (c.dark) c.blue.copy(alpha = 0.24f) else c.blue.copy(alpha = 0.14f),
+                    ContinuousRoundedRectangle(13.dp),
+                )
                 .testTag("tab-indicator")
         )
         Row(Modifier.fillMaxWidth()) {
             items.forEachIndexed { index, (label, icon) ->
                 val tint by animateColorAsState(
-                    if (tab == index) Color.White else Color(0xFFB2BED1),
+                    if (tab == index) c.blue else c.muted,
                     tween(150), label = "tab-tint",
                 )
                 Column(

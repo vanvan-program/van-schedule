@@ -22,6 +22,7 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -323,13 +324,18 @@ fun VanApp(
                 bottomBar = {
                     if (route == VanRoute.Home) {
                         val navShape = ContinuousRoundedRectangle(28.dp)
-                        val navBg =
-                            if (c.dark) c.surface.copy(alpha = 0.85f)
-                            else Color(0xFF243249).copy(alpha = if (materialLevel == GlassMaterialLevel.NONE) 1f else 0.86f)
+                        val navBg = c.surface
                         CompositionLocalProvider(LocalDropdownPanelDragSelect provides bottomDragSelect) {
                             Box(
                                 Modifier.navigationBarsPadding()
                                     .padding(horizontal = 18.dp, vertical = 4.dp)
+                                    .shadow(
+                                        elevation = 10.dp,
+                                        shape = navShape,
+                                        clip = false,
+                                        ambientColor = Color.Black.copy(alpha = 0.16f),
+                                        spotColor = Color.Black.copy(alpha = 0.20f),
+                                    )
                                     .clip(navShape)
                                     .then(
                                         if (materialLevel != GlassMaterialLevel.NONE) {
@@ -337,7 +343,7 @@ fun VanApp(
                                                 backdrop = mainBackdrop,
                                                 shape = navShape,
                                                 level = materialLevel,
-                                                isDark = true,
+                                                isDark = c.dark,
                                                 fallbackColor = navBg,
                                             )
                                         } else {
