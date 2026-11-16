@@ -303,7 +303,7 @@ internal fun WeekGrid(
                         }
                     }
                     // 午休 / 晚休：只在「前面有课、后面也有课」的空档里画一条通栏浅色横带
-                    timeline.bands.filter { it.section == null }.forEach { band ->
+                    timeline.bands.filter { it.section == null && it.units > 0f }.forEach { band ->
                         val kind = timeline.breakKindOf(band) ?: return@forEach
                         val bandTop = rowHeight * timeline.position(band.start)
                         val bandHeight = rowHeight * band.units
@@ -451,12 +451,47 @@ private fun GridCard(
     val textScale = p.cardTextScale.coerceIn(0.75f, 1.4f)
     val nameSize = (if (compact) 9f else if (width < 52.dp) 11f else if (pastel) 12.7f else 12f) * textScale
     val subSize = (if (pastel) 11f else 9f) * textScale
-    val showPlace = p.showCardPlace && place.isNotBlank() && !compact
-    val showTeacher = p.showCardTeacher && teacher.isNotBlank() && !compact
-    val placeLines = if (height < 60.dp) 1 else 2
-    val subCount = (if (showPlace) placeLines else 0) + (if (showTeacher) 1 else 0)
-    val subHeight = with(density) { (subSize.sp * subCount * 1.2f).toDp() }
-    val nameLines = if (compact) 1 else ((height - subHeight - 6.dp) / with(density) { (nameSize.sp * 1.15f).toDp() }).toInt().coerceIn(1, 5)
+    val textMeasurer = rememberTextMeasurer()
+    val nameStyle = LocalTextStyle.current.copy(
+        fontSize = nameSize.sp, lineHeight = (nameSize * 1.18f).sp,
+        fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+    )
+    val subStyle = LocalTextStyle.current.copy(
+        fontSize = subSize.sp, lineHeight = (subSize * 1.2f).sp,
+        textAlign = TextAlign.Center,
+    )
+    val textWidth = with(density) { (width - 6.dp).roundToPx().coerceAtLeast(1) }
+    val contentHeight = with(density) { (height - if (compact) 0.dp else 6.dp).roundToPx().coerceAtLeast(0) }
+    fun measuredHeight(text: String, style: androidx.compose.ui.text.TextStyle, lines: Int) =
+        textMeasurer.measure(text, style, maxLines = lines, overflow = TextOverflow.Ellipsis,
+            constraints = Constraints(maxWidth = textWidth)).size.height
+    val title = prefix + name
+    val location = if (pastel) "@$place" else place
+    // Reserve complete measured lines, including font padding. On short cards,
+    // reduce optional metadata before it can squeeze another field to half a line.
+    val titleHeight = measuredHeight(title, nameStyle, 1)
+    var remaining = (contentHeight - titleHeight).coerceAtLeast(0)
+    var placeLines = 0
+    if (p.showCardPlace && place.isNotBlank() && !compact) {
+        val oneLine = measuredHeight(location, subStyle, 1)
+        if (oneLine <= remaining) {
+            placeLines = 1
+            remaining -= oneLine
+        }
+    }
+    val teacherHeight = measuredHeight(teacher, subStyle, 1)
+    val showTeacher = p.showCardTeacher && teacher.isNotBlank() && !compact && teacherHeight <= remaining
+    if (showTeacher) remaining -= teacherHeight
+    if (placeLines == 1 && height >= 60.dp) {
+        val extra = measuredHeight(location, subStyle, 2) - measuredHeight(location, subStyle, 1)
+        if (extra <= remaining) {
+            placeLines = 2
+            remaining -= extra
+        }
+    }
+    val nameLines = if (compact) 1 else (1..5).last { lines ->
+        measuredHeight(title, nameStyle, lines) <= titleHeight + remaining
+    }
     val textColor = when {
         inactive -> colors.inactiveText
         pastel -> {
@@ -516,9 +551,9 @@ private fun GridCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = verticalArrangement,
         ) {
-            Text(prefix + name, color = textColor, fontSize = nameSize.sp, lineHeight = (nameSize * 1.18f).sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, maxLines = nameLines, overflow = TextOverflow.Ellipsis)
-            if (showPlace) Text(if (pastel) "@$place" else place, color = textColor.copy(alpha = if (pastel) 1f else 0.88f), fontSize = subSize.sp, lineHeight = (subSize * 1.2f).sp, textAlign = TextAlign.Center, maxLines = placeLines, overflow = TextOverflow.Ellipsis)
-            if (showTeacher) Text(teacher, color = textColor.copy(alpha = if (pastel) 0.9f else 0.8f), fontSize = subSize.sp, lineHeight = (subSize * 1.2f).sp, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = textColor, style = nameStyle, maxLines = nameLines, overflow = TextOverflow.Ellipsis)
+            if (placeLines > 0) Text(location, color = textColor.copy(alpha = if (pastel) 1f else 0.88f), style = subStyle, maxLines = placeLines, overflow = TextOverflow.Ellipsis)
+            if (showTeacher) Text(teacher, color = textColor.copy(alpha = if (pastel) 0.9f else 0.8f), style = subStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (hasWeekNote && !compact) {
             Text(

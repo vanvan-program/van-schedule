@@ -48,11 +48,14 @@ internal fun TimetableHeader(
     var selectWeek by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var scheduleDropdown by remember { mutableStateOf(false) }
-    // Nexio 的顶栏是「居中周次 + 右侧图标」：没有课表名胶囊，切换课表收进更多菜单
-    Box(Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+    // 周次在剩余空间居中，操作区独立占位，避免窄屏或大字体时相互覆盖。
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         TextButton(
             onClick = { selectWeek = true },
-            modifier = Modifier.align(Alignment.Center).testTag("week-selector"),
+            modifier = Modifier.weight(1f).testTag("week-selector"),
             contentPadding = PaddingValues(horizontal = 10.dp),
         ) {
             MotionText(
@@ -63,7 +66,7 @@ internal fun TimetableHeader(
             )
         }
         Row(
-            Modifier.align(Alignment.CenterEnd),
+            Modifier,
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
