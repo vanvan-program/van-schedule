@@ -57,6 +57,8 @@ CoursePalette.pastelTextArgb(fill, cardArgb, isDark)
 
 - 日列表的课程行（`CourseRow`）改成同一套浅底 + 同色系文字，地点同样带 `@`，圆角 14dp。
 - 顶栏「更多」菜单新增「切换课表…」，原来点课表名胶囊的动作移到菜单里。
+
+> 0.5.7 把这一步又走回来了：「切换课表」从「更多」菜单移到「第N周」左边，改成显示当前课表名的药丸，点开还是同一个课表列表（见 README 0.5.7）。顶栏其余部分不变。
 - `VanColors` 增加 `breakBand`（浅色 `#E7EAEF`、深色 `#232B37`，莫奈档取 `surfaceContainerHigh`），供午休/晚休横带使用。
 - 「我的」页改成分组式设置（`SettingsGroup` + `SettingRow`），不再一屏 12 张独立卡片。
 
