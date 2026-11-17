@@ -102,6 +102,7 @@ fun Timetable(
                 week = week,
                 schedules = schedules,
                 daily = daily,
+                showReturn = showReturn,
                 onWeekSelected = pager::moveWeek,
                 onPrevWeek = { pager.moveWeek(week - 1) },
                 onNextWeek = { pager.moveWeek(week + 1) },
@@ -145,9 +146,6 @@ fun Timetable(
                             Modifier.fillMaxSize(),
                             p,
                         )
-                    }
-                    Box(Modifier.width(44.dp).fillMaxHeight(), contentAlignment = Alignment.CenterEnd) {
-                        if (showReturn) ReturnToTodayButton(true, Modifier) { pager.jumpToday(dateNow) }
                     }
                 }
             } else {
@@ -248,9 +246,6 @@ fun Timetable(
                             pager.selectWeekday(date)
                             pager.showDay(date)
                         }
-                    }
-                    Box(Modifier.width(44.dp).fillMaxHeight(), contentAlignment = Alignment.CenterEnd) {
-                        if (showReturn) ReturnToTodayButton(false, Modifier) { pager.jumpToday(dateNow) }
                     }
                 }
             }

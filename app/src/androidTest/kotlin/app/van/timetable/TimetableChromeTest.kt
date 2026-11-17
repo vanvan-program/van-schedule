@@ -80,12 +80,28 @@ class TimetableChromeTest {
         assertTrue(failures.joinToString("\n"),failures.isEmpty())
     }
 
-    @Test fun progressBarIsUnlabelledAndUsesSmallRoundThumb() {
+    @Test fun progressBarShowsWeekLabelOnlyWhileDraggingAndUsesSmallRoundThumb() {
+        // 静止时仍是原来那条干净进度条，没有标签。
         ui.onNodeWithTag("week-scrubber-label").assertDoesNotExist()
         val thumb=ui.onNodeWithTag("week-scrubber-thumb",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
         val dp=ui.activity.resources.displayMetrics.density
         assertEquals(thumb.width,thumb.height,0.5f)
         assertTrue("Thumb must be a small dot",thumb.height<=14f*dp)
+        // 0.5.9：拖动期间在拇指上方浮出「第N周」，抬手后消失。
+        // 必须真的拖一下才会产生 onValueChange（draft 不为空），标签才有内容。
+        val scrubber = ui.onNodeWithTag("week-scrubber")
+        scrubber.performTouchInput {
+            down(center)
+            moveBy(androidx.compose.ui.geometry.Offset(-24f, 0f))
+        }
+        ui.waitForIdle()
+        val label = ui.onNodeWithTag("week-scrubber-label").assertExists().fetchSemanticsNode()
+        val labelText = label.config[androidx.compose.ui.semantics.SemanticsProperties.Text]
+            .joinToString("") { it.text }
+        assertTrue("拖动时标签应显示周次，实际：$labelText", labelText.startsWith("第") && labelText.endsWith("周"))
+        scrubber.performTouchInput { up() }
+        ui.waitForIdle()
+        ui.onNodeWithTag("week-scrubber-label").assertDoesNotExist()
         ui.onNodeWithTag("week-scrubber").performSemanticsAction(SemanticsActions.SetProgress) { it(9f) }
         ui.onNodeWithText("第9周 ▾").assertExists()
         ui.onNodeWithTag("week-scrubber").assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,"第9周"))

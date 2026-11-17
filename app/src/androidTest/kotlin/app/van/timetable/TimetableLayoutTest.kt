@@ -190,7 +190,7 @@ class TimetableLayoutTest {
         ui.setContent {
             VanTheme(prefs.value) {
                 Box(Modifier.width(280.dp)) {
-                    TimetableHeader(gridSchedule(), 18, listOf(gridSchedule()), false, {}, {}, {}, {}, {}, {}, {})
+                    TimetableHeader(gridSchedule(), 18, listOf(gridSchedule()), false, false, {}, {}, {}, {}, {}, {}, {})
                 }
             }
         }

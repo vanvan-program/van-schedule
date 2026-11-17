@@ -69,7 +69,7 @@ class Version023UiTest {
     }
 
     @Test
-    fun separateRightEdgeButtonReturnsToCurrentWeekAndToday() {
+    fun topLeftChipReturnsToCurrentWeekAndToday() {
         render(weeklySchedule())
         ui.onNodeWithTag("jump-today").assertDoesNotExist()
         chooseWeek(3)
@@ -77,8 +77,9 @@ class Version023UiTest {
         button.assert(hasContentDescription("回到本周"))
         val buttonBounds = button.fetchSemanticsNode().boundsInRoot
         val viewport = ui.onNodeWithTag("week-viewport").fetchSemanticsNode().boundsInRoot
-        assertTrue("Return button should sit along the right edge", buttonBounds.left > viewport.center.x)
-        assertTrue("Return button should be beside the grid", buttonBounds.top > viewport.top)
+        // 0.5.9：不再是右边缘竖条，改为顶栏左上角的小药丸，位于课表网格上方。
+        assertTrue("Return chip should sit in the top-left", buttonBounds.left < viewport.center.x)
+        assertTrue("Return chip should sit above the grid", buttonBounds.bottom <= viewport.top + 0.5f)
         screenshot("023-return-current-week.png")
         button.performClick()
         ui.onNodeWithText("第1周 ▾").assertExists()

@@ -40,6 +40,7 @@ internal fun TimetableHeader(
     week: Int,
     schedules: List<Schedule>,
     daily: Boolean,
+    showReturn: Boolean,
     onWeekSelected: (Int) -> Unit,
     onPrevWeek: () -> Unit,
     onNextWeek: () -> Unit,
@@ -60,42 +61,55 @@ internal fun TimetableHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 左侧与周次右侧的空位等宽，周次的中心点固定；课表药丸只在这块空位里伸缩。
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-            if (schedules.size > 1) {
-                // 内层 Box 只为给下拉面板当锚点：外层撑满整块空位，这里只占药丸本身的宽度。
-                Box {
-                    ScheduleSwitcher(
-                        name = s.name,
-                        onClick = { scheduleDropdown = true },
-                    )
-                    if (scheduleDropdown) {
-                        GlassDropdownPanel(
-                            expanded = scheduleDropdown,
-                            onDismiss = { scheduleDropdown = false },
-                            backdrop = backdrop,
-                            materialLevel = materialLevel,
-                            isDark = colors.dark,
-                            surfaceColor = colors.surface,
-                            alignment = Alignment.TopStart,
-                        ) {
-                            schedules.forEach { item ->
-                                val isCurrent = item.id == s.id
+        // 0.5.9 起「回到本周」不再是右边缘的竖条，而是这块空位最左边的一枚小药丸：
+        // 空位里靠左放它、靠右放课表药丸，两者都只占自己的宽度，周次依旧居中。
+        Box(Modifier.weight(1f)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                // 两者都在时一左一右；只有课表药丸时仍旧贴住周次左边（0.5.7 的位置），
+                // 只有「回到本周」时靠左，不会因为排布方式变化而乱跑。
+                horizontalArrangement = if (showReturn) Arrangement.SpaceBetween else Arrangement.End,
+            ) {
+                if (showReturn) {
+                    ReturnToWeekChip(daily = daily, compact = schedules.size > 1) { onToday() }
+                }
+                if (schedules.size > 1) {
+                    // 内层 Box 只为给下拉面板当锚点：外层占满空位，这里只占药丸本身的宽度。
+                    Box {
+                        ScheduleSwitcher(
+                            name = s.name,
+                            onClick = { scheduleDropdown = true },
+                        )
+                        if (scheduleDropdown) {
+                            GlassDropdownPanel(
+                                expanded = scheduleDropdown,
+                                onDismiss = { scheduleDropdown = false },
+                                backdrop = backdrop,
+                                materialLevel = materialLevel,
+                                isDark = colors.dark,
+                                surfaceColor = colors.surface,
+                                alignment = Alignment.TopStart,
+                            ) {
+                                schedules.forEach { item ->
+                                    val isCurrent = item.id == s.id
+                                    GlassDropdownItem(
+                                        label = if (isCurrent) "${item.name} ✓" else item.name,
+                                        selected = isCurrent,
+                                        highlightColor = colors.blue,
+                                    ) {
+                                        scheduleDropdown = false
+                                        if (!isCurrent) onSelectSchedule(item.id)
+                                    }
+                                }
                                 GlassDropdownItem(
-                                    label = if (isCurrent) "${item.name} ✓" else item.name,
-                                    selected = isCurrent,
-                                    highlightColor = colors.blue,
+                                    label = "管理全部课表…",
+                                    selected = false,
+                                    highlightColor = colors.muted,
                                 ) {
                                     scheduleDropdown = false
-                                    if (!isCurrent) onSelectSchedule(item.id)
+                                    nav("schedules")
                                 }
-                            }
-                            GlassDropdownItem(
-                                label = "管理全部课表…",
-                                selected = false,
-                                highlightColor = colors.muted,
-                            ) {
-                                scheduleDropdown = false
-                                nav("schedules")
                             }
                         }
                     }

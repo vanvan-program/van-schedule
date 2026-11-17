@@ -146,28 +146,51 @@ internal fun WeekNotesBar(s: Schedule, week: Int, monday: LocalDate, p: Preferen
     }
 }
 
+/**
+ * 顶栏左上角的「回到本周 / 回到今日」小药丸。
+ *
+ * 0.5.9 之前它是贴在课表右边缘的一根 44dp 竖条：既吃掉一整列宽度，又把「回到当前位置」
+ * 这个高频动作放在了大拇指最难够到的右侧。现在改成顶栏左侧的一枚小药丸，
+ * 外形与「切换课表」一致，文案与 testTag 保持不变（jump-today）。
+ *
+ * [compact] 用于多课表：左侧空位还要放课表名药丸，两个文字药丸会挤爆，此时退化成
+ * 只留一枚「今天」图标的圆药丸，内容描述仍是完整文案，无障碍与测试不受影响。
+ */
 @Composable
-internal fun ReturnToTodayButton(daily: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun ReturnToWeekChip(
+    daily: Boolean,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    onClick: () -> Unit,
+) {
     val label = if (daily) "回到今日" else "回到本周"
+    val colors = LocalVan.current
     Surface(
         onClick = onClick,
-        modifier =
-            modifier.width(44.dp).heightIn(min = 112.dp).testTag("jump-today").semantics {
-                contentDescription = label
-            },
-        shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp),
-        color = LocalVan.current.blue,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-        shadowElevation = 3.dp,
+        modifier = modifier.testTag("jump-today").semantics { contentDescription = label },
+        shape = ContinuousCapsule(),
+        color = colors.blue.copy(alpha = if (colors.dark) 0.20f else 0.10f),
+        contentColor = colors.blue,
     ) {
-        Text(
-            label.toCharArray().joinToString("\n"),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
-            textAlign = TextAlign.Center,
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
-            fontWeight = FontWeight.Medium,
-        )
+        if (compact) {
+            Box(
+                Modifier.heightIn(min = 32.dp).padding(horizontal = 7.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Today, null, Modifier.size(17.dp))
+            }
+        } else {
+            Text(
+                label,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                textAlign = TextAlign.Center,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
