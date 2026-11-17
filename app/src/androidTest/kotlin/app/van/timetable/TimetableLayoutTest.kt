@@ -84,36 +84,16 @@ class TimetableLayoutTest {
     private fun rowHeightPx(): Float = ui.onNodeWithTag("section-1").fetchSemanticsNode().boundsInRoot.height
 
     @Test
-    fun mealBandsOnlyAppearForRealLunchAndDinner() {
+    fun noBreakBandsAreDrawnAnywhere() {
         val prefs = mutableStateOf(Preferences(theme = "light", fitWeek = true, showCourseGaps = true))
         showGrid(prefs)
 
-        ui.onAllNodesWithText("午休").assertCountEquals(1)
-        ui.onAllNodesWithText("晚休").assertCountEquals(1)
-        // 10 分钟的课间（08:55-09:05、11:15-11:25…）不能画横带
-        ui.onNodeWithTag("break-band-08:55").assertDoesNotExist()
-        ui.onNodeWithTag("break-band-11:15").assertDoesNotExist()
-        ui.onNodeWithTag("break-band-20:00").assertDoesNotExist()
-        // 真正的午休与晚休
-        ui.onNodeWithTag("break-band-12:10").assertExists()
-        ui.onNodeWithTag("break-band-18:10").assertExists()
-
-        val bands =
-            ui.onAllNodes(hasTestTagMatching { it.startsWith("break-band-") })
-                .fetchSemanticsNodes()
-                .map { it.boundsInRoot }
-        assertEquals("只应剩下两条休息横带", 2, bands.size)
-        val cards =
-            ui.onAllNodes(hasTestTagMatching { it.startsWith("grid-course-") or it.startsWith("inactive-course-") })
-                .fetchSemanticsNodes()
-                .map { it.boundsInRoot }
-        assertTrue("当前课表应当有课程卡参与比对", cards.isNotEmpty())
-        for (band in bands) {
-            for (card in cards) {
-                assertFalse("休息横带压住了课程卡：band=$band card=$card", band.overlaps(card))
-            }
-        }
-        shot("layout-bands-expanded.png")
+        // 0.5.10：午休 / 晚休横带已删除，任何空档都不再画带子，也不再出现「午休」「晚休」文字。
+        ui.onAllNodesWithText("午休").assertCountEquals(0)
+        ui.onAllNodesWithText("晚休").assertCountEquals(0)
+        val bands = ui.onAllNodes(hasTestTagMatching { it.startsWith("break-band-") }).fetchSemanticsNodes()
+        assertEquals("不应再有任何休息横带", 0, bands.size)
+        shot("layout-no-bands-expanded.png")
     }
 
     @Test
@@ -121,10 +101,10 @@ class TimetableLayoutTest {
         val prefs = mutableStateOf(Preferences(theme = "light", fitWeek = true, showCourseGaps = true))
         showGrid(prefs)
         val expandedRow = rowHeightPx()
-        val lunch = ui.onNodeWithTag("break-band-12:10").fetchSemanticsNode().boundsInRoot
-        val dinner = ui.onNodeWithTag("break-band-18:10").fetchSemanticsNode().boundsInRoot
-        assertTrue("两小时午休应当比一小时晚休更高", lunch.height > dinner.height)
-        assertTrue("午休横带不应压到一行课程的高度", lunch.height <= expandedRow)
+        // 横带没了，但空档高度仍按时长分配：先确认长空档确实把课程行推开了。
+        val lunch = ui.onNodeWithTag("section-5").fetchSemanticsNode().boundsInRoot
+        val first = ui.onNodeWithTag("section-1").fetchSemanticsNode().boundsInRoot
+        assertTrue("午休空档应当把第 5 节推到第 1 节下方", lunch.top > first.bottom)
         assertTrue("课程行不应被空档压扁", expandedRow / density >= 38f)
 
         prefs.value = prefs.value.copy(showCourseGaps = false)
@@ -132,7 +112,7 @@ class TimetableLayoutTest {
         ui.onAllNodesWithText("午休").assertCountEquals(0)
         val compactRow = rowHeightPx()
         assertTrue("收起空档后课程行应当更高", compactRow > expandedRow)
-        shot("layout-bands-compact.png")
+        shot("layout-no-bands-compact.png")
     }
 
     @Test

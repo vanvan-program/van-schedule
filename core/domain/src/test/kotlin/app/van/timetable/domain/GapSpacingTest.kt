@@ -6,10 +6,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * 课间空档的高度与休息横带规则。
+ * 课间空档的高度规则。
  *
- * 用户反馈「横条还是很多、位置也不对」，根因是旧的判定只看了钟点区间：
- * 10:00 之后 15:00 之前的任何空档（连 10 分钟课间）都会画成「午休」。
+ * 0.5.10 起不再画午休 / 晚休横带（用户反馈「删除午休晚休的横条」），
+ * 但空档高度仍按真实时长分配：10 分钟的课间只留一条细缝，两小时的午休才占整块。
+ * 这个文件只验证高度，不再验证「哪段空档算午休」。
  */
 class GapSpacingTest {
     private val elevenSections =
@@ -37,7 +38,7 @@ class GapSpacingTest {
         GridTimeline.create(elevenSections, 0.42f, gapUnitsByMinutes(), occupied, edgeGapUnits = 0.05f)
 
     @Test
-    fun `ten minute breaks are never lunch or dinner`() {
+    fun `ten minute breaks stay slim`() {
         val timeline = timeline()
         val tenMinuteGaps =
             timeline.bands.filter {
@@ -46,33 +47,31 @@ class GapSpacingTest {
                     java.time.Duration.between(it.start, it.end).toMinutes() < 30
             }
         assertTrue("11 节课的作息里应该存在 10 分钟课间", tenMinuteGaps.isNotEmpty())
-        tenMinuteGaps.forEach { assertNull("10 分钟课间不应画休息横带：${it.start}-${it.end}", timeline.breakKindOf(it)) }
+        tenMinuteGaps.forEach {
+            assertTrue("10 分钟课间应当只剩细缝：${it.start}-${it.end}", it.units <= 0.06f)
+        }
     }
 
     @Test
-    fun `only the real lunch and dinner gaps are labelled`() {
-        val timeline = timeline()
-        val labelled = timeline.bands.mapNotNull { band -> timeline.breakKindOf(band)?.let { band.start to it } }
-        assertEquals(listOf(LocalTime.of(12, 10) to GridTimeline.BreakKind.LUNCH, LocalTime.of(18, 10) to GridTimeline.BreakKind.DINNER), labelled)
-    }
-
-    @Test
-    fun `forty minute morning break is not a meal`() {
-        val timeline = timeline()
-        val morning = timeline.bands.first { it.section == null && it.start == LocalTime.of(9, 50) }
-        assertNull(timeline.breakKindOf(morning))
-    }
-
-    @Test
-    fun `short breaks stay slim and long breaks keep their proportion`() {
+    fun `long meal gaps keep the full height`() {
         val timeline = timeline()
         fun unitsAt(start: LocalTime) = timeline.bands.first { it.start == start }.units
-        assertTrue("10 分钟课间应当只剩细缝", unitsAt(LocalTime.of(8, 55)) <= 0.06f)
         val lunch = unitsAt(LocalTime.of(12, 10))
         val dinner = unitsAt(LocalTime.of(18, 10))
-        assertTrue("午休应当明显高于 10 分钟课间", lunch >= 0.6f)
-        assertTrue("晚休应当明显高于 10 分钟课间", dinner >= 0.4f)
+        assertTrue("两小时的午休空档应当明显高于 10 分钟课间", lunch >= 0.6f)
+        assertTrue("一小时的晚休空档应当明显高于 10 分钟课间", dinner >= 0.4f)
         assertTrue("两小时的午休不应比一小时的晚休更矮", lunch > dinner)
+    }
+
+    @Test
+    fun `forty minute morning break is taller than a ten minute one but shorter than lunch`() {
+        val timeline = timeline()
+        fun unitsAt(start: LocalTime) = timeline.bands.first { it.start == start }.units
+        val morning = unitsAt(LocalTime.of(9, 50))
+        val tenMinute = unitsAt(LocalTime.of(8, 55))
+        val lunch = unitsAt(LocalTime.of(12, 10))
+        assertTrue("40 分钟课间应当比 10 分钟课间更高", morning > tenMinute)
+        assertTrue("40 分钟课间应当比两小时午休更矮", morning < lunch)
     }
 
     @Test

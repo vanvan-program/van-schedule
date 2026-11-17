@@ -7,6 +7,15 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.5.10 去掉午休 / 晚休横条
+
+本版版本号 `0.5.10`（`versionCode 60`）。
+
+- 周课表不再在午休、晚休的空档上叠那条通栏浅色横带（带子中间原本写着「午休」「晚休」）。空档本身已经按时长留白，再叠一层带子只是多一层噪音。
+- 空档高度规则完全没变：10 分钟的课间仍是细缝，两小时的午休仍占整块，展开 / 收起空档（`showCourseGaps`）的行为与之前一致。删掉的只是那条盖在时间轴上的色带。
+- 相关死代码一并清掉：`GridTimeline.breakKindOf`、`BreakKind`、`MIN_BREAK_MINUTES`、`VanColors.breakBand`。
+- 测试同步更新：原来断言「正好两条横带」的界面测试改为断言「一条都没有」；原来验证「哪段空档算午休」的领域测试改为验证空档高度仍按时长分配。
+
 ## 0.5.9 周课表右侧竖条与周次提示
 
 本版版本号 `0.5.9`（`versionCode 59`）。

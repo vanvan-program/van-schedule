@@ -27,36 +27,7 @@ class GridTimeline private constructor(val bands: List<Band>) {
     fun gapContaining(start: LocalTime, end: LocalTime): Band? =
         bands.firstOrNull { it.section == null && start >= it.start && end <= it.end }
 
-    /**
-     * 两个节次之间的空档属于哪一段休息。
-     *
-     * 只看「前面有课、后面也有课」的空档：作息表首尾那两个空档（0 点到第一节课、最后一节课到 24 点）
-     * 只是时间轴的两端，标成「午休」会很怪。空档还必须真的够长——10 分钟的课间不是午休，
-     * 否则每个课间都会横一条带子。
-     */
-    fun breakKindOf(band: Band): BreakKind? {
-        if (band.section != null) return null
-        val index = bands.indexOf(band)
-        if (index <= 0 || index >= bands.lastIndex) return null
-        if (bands[index - 1].section == null || bands[index + 1].section == null) return null
-        if (Duration.between(band.start, band.end).toMinutes() < MIN_BREAK_MINUTES) return null
-        return when {
-            band.start >= LocalTime.of(10, 0) &&
-                band.start <= LocalTime.of(13, 30) &&
-                band.end <= LocalTime.of(15, 30) -> BreakKind.LUNCH
-            band.start >= LocalTime.of(16, 0) && band.end <= LocalTime.of(20, 30) -> BreakKind.DINNER
-            else -> null
-        }
-    }
-
-    enum class BreakKind {
-        LUNCH,
-        DINNER,
-    }
-
     companion object {
-        /** 短于这个时长的课间不画休息横带：10 分钟课间画一条「午休」只会添乱。 */
-        const val MIN_BREAK_MINUTES = 30L
         /** Check the whole timetable so paging never changes the spacing policy. */
         fun canCollapseGaps(schedule: Schedule): Boolean {
             val first = LocalDate.parse(schedule.week1Monday)

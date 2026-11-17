@@ -326,31 +326,8 @@ internal fun WeekGrid(
                             Text(n.end, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, softWrap = false, color = secColor)
                         }
                     }
-                    // 午休 / 晚休：只在「前面有课、后面也有课」的长空档里画一条通栏浅色横带。
-                    // 有课程占用这段时间的空档不画，否则横带会被课程卡压住一半。
-                    timeline.bands.filter { it.section == null && it.units > 0f }.forEach { band ->
-                        val kind = timeline.breakKindOf(band) ?: return@forEach
-                        if (occupied.any { it.first < band.end && it.second > band.start }) return@forEach
-                        val bandTop = rowHeight * timeline.position(band.start)
-                        val bandHeight = rowHeight * band.units
-                        if (bandHeight < 20.dp) return@forEach
-                        // 横带铺满整天的宽度（时间列保持空白），不是只画一个小胶囊
-                        Box(
-                            Modifier.offset(x = gutter + 1.dp, y = bandTop + 2.dp)
-                                .width(width - gutter - 2.dp)
-                                .height(bandHeight - 4.dp)
-                                .background(colors.breakBand, ContinuousRoundedRectangle(10.dp))
-                                .testTag("break-band-${band.start}"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                if (kind == GridTimeline.BreakKind.LUNCH) "午休" else "晚休",
-                                fontSize = 11.sp,
-                                lineHeight = 14.sp,
-                                color = colors.muted,
-                            )
-                        }
-                    }
+                    // 0.5.10 起不再画午休 / 晚休横带：空档本身就按时长留白，
+                    // 再叠一条浅色带子只是多一层噪音。空档高度规则不受影响。
                     if (p.showCustomTimeLabels) gapLabels.forEach { (band, times) ->
                         Column(Modifier.offset(y = rowHeight * timeline.position(band.start)).width(gutter - 3.dp).height(rowHeight * band.units).testTag("clock-band-${times.first}-${times.second}"), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.Center) {
                             Text(times.first.toString(), fontSize = 8.sp, lineHeight = 9.sp, maxLines = 1, softWrap = false, color = colors.muted)
@@ -378,7 +355,9 @@ internal fun WeekGrid(
                                 )
                             val dropShape = ContinuousRoundedRectangle(p.cardCornerDp.coerceIn(0f, 28f).dp)
                             Box(
-                                Modifier.offset(x = targetX, y = targetY)
+                                Modifier.offset {
+                                    with(density) { IntOffset(targetX.roundToPx(), targetY.roundToPx()) }
+                                }
                                     .width(dayWidth - cardInsetX * 2)
                                     .height(targetH)
                                     .background(colors.blue.copy(alpha = 0.2f), dropShape)

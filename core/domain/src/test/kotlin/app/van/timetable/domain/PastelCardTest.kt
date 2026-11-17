@@ -67,35 +67,41 @@ class PastelCardTest {
         }
     }
 
+    /**
+     * 与课表页一致的空档策略：空档高度按时长分配，10 分钟课间留细缝，长空档才占整块。
+     * 直接用 `create(sections)` 那个重载会让每个空档等高，验证不了时长差异。
+     */
+    private fun timeBasedTimeline(sections: List<Section>) =
+        GridTimeline.create(
+            sections,
+            0.42f,
+            { minutes -> if (minutes >= 20L) (0.42f * minutes / 60f).coerceIn(0.2f, 0.9f) else 0.05f },
+            emptyList(),
+            edgeGapUnits = 0.05f,
+        )
+
     @Test
-    fun `gap between morning and afternoon is lunch`() {
-        val timeline = GridTimeline.create(lunchSchedule)
+    fun `lunch gap keeps the largest gap height`() {
+        val timeline = timeBasedTimeline(lunchSchedule)
         val gap = timeline.bands.first { it.section == null && it.start == LocalTime.of(11, 30) }
-        assertEquals(GridTimeline.BreakKind.LUNCH, timeline.breakKindOf(gap))
+        assertTrue("午休空档应当按时长撑开，实际 ${gap.units}", gap.units >= 0.6f)
     }
 
     @Test
-    fun `gap after late afternoon is dinner`() {
-        val timeline = GridTimeline.create(dinnerSchedule)
-        val gap = timeline.bands.first { it.section == null && it.start == LocalTime.of(17, 25) }
-        assertEquals(GridTimeline.BreakKind.DINNER, timeline.breakKindOf(gap))
-    }
-
-    @Test
-    fun `leading and trailing gaps are never labelled`() {
-        val timeline = GridTimeline.create(lunchSchedule)
-        assertEquals(LocalTime.MIN, timeline.bands.first().start)
-        assertNull(timeline.bands.first().section)
-        assertNull(timeline.breakKindOf(timeline.bands.first()))
-        assertNull(timeline.breakKindOf(timeline.bands.last()))
-    }
-
-    @Test
-    fun `short gaps between adjacent sections are not breaks`() {
-        val timeline = GridTimeline.create(lunchSchedule)
+    fun `short gap between adjacent sections stays slim`() {
+        val timeline = timeBasedTimeline(lunchSchedule)
         // 第 1、2 节之间只隔 10 分钟
         val gap = timeline.bands.first { it.section == null && it.start == LocalTime.of(8, 45) }
-        assertNull(timeline.breakKindOf(gap))
+        assertTrue("10 分钟课间应当只剩细缝，实际 ${gap.units}", gap.units <= 0.06f)
+    }
+
+    @Test
+    fun `leading and trailing gaps collapse`() {
+        val timeline = timeBasedTimeline(lunchSchedule)
+        assertEquals(LocalTime.MIN, timeline.bands.first().start)
+        assertNull(timeline.bands.first().section)
+        assertTrue("凌晨空档不应撑开课表，实际 ${timeline.bands.first().units}", timeline.bands.first().units <= 0.06f)
+        assertTrue("深夜空档不应撑开课表，实际 ${timeline.bands.last().units}", timeline.bands.last().units <= 0.06f)
     }
 
     private val lunchSchedule =
@@ -106,14 +112,6 @@ class PastelCardTest {
             Section(4, "10:45", "11:30"),
             Section(5, "14:00", "14:45"),
             Section(6, "14:55", "15:40"),
-        )
-
-    private val dinnerSchedule =
-        listOf(
-            Section(1, "08:00", "08:45"),
-            Section(2, "14:00", "14:45"),
-            Section(3, "14:55", "17:25"),
-            Section(4, "18:25", "19:10"),
         )
 
     private fun channel(color: Long, shift: Int): Double = ((color shr shift) and 255) / 255.0
