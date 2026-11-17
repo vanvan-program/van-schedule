@@ -103,6 +103,56 @@ class InAppUpdateTest {
         assertNull(UpdateCheck.normalizeSha256("md5:8cf1a9596ff250212999b0bf21ed4f34"))
     }
 
+    /**
+     * 真实 v0.5.10 的 `releases/latest` 响应（附件顺序：校验值、arm64 安装包、源码包）。
+     *
+     * 这条用例守的是「0.5.8 能不能在应用内升到 0.5.10」：
+     * 版本号跨位数（8 → 10）如果按字符串比大小就会判成「没有更新」，老用户永远收不到提示。
+     */
+    @Test fun olderBuildSeesNewerReleaseAcrossDigitBoundary() {
+        val json =
+            """
+            {
+              "tag_name": "v0.5.10",
+              "name": "van课表 0.5.10 · 去掉午休晚休横条",
+              "published_at": "2026-11-17T13:21:30Z",
+              "html_url": "https://github.com/vanvan-program/van-schedule/releases/tag/v0.5.10",
+              "body": "<p>删掉午休晚休横条</p>",
+              "assets": [
+                {
+                  "name": "SHA256SUMS-0.5.10.txt",
+                  "browser_download_url": "https://example.com/SHA256SUMS-0.5.10.txt",
+                  "size": 192,
+                  "digest": "sha256:47e3cf30ac63406b79b94c913ee13cb510355ff687e66728bce74262f89f6360"
+                },
+                {
+                  "name": "van-schedule-0.5.10-arm64.apk",
+                  "browser_download_url": "https://example.com/van-schedule-0.5.10-arm64.apk",
+                  "size": 13612238,
+                  "digest": "sha256:d8327c96abac7738e2fcd7ea9a95dceabe8d746cd659eb9e9d518a515aecf443"
+                },
+                {
+                  "name": "van-schedule-0.5.10-source.zip",
+                  "browser_download_url": "https://example.com/van-schedule-0.5.10-source.zip",
+                  "size": 7436825,
+                  "digest": "sha256:e0d868f9ecf53f3ba9efe93c78bc613fcab477a34c9b5b77891758610097f54e"
+                }
+              ]
+            }
+            """.trimIndent()
+        val release = UpdateCheck.parseLatestReleaseJson(json)!!
+        assertEquals("0.5.10", release.version)
+        // 0.5.8 的老用户必须被判成「有新版本」
+        assertTrue("0.5.10 应当比 0.5.8 新", UpdateCheck.isNewer(release.version, "0.5.8"))
+        assertTrue("0.5.10 应当比 0.5.9 新", UpdateCheck.isNewer(release.version, "0.5.9"))
+        assertFalse("0.5.10 不应比 0.6 新", UpdateCheck.isNewer(release.version, "0.6"))
+        // 附件里排在最前的是校验值文件，仍要挑中 arm64 安装包
+        val apk = release.apk!!
+        assertEquals("van-schedule-0.5.10-arm64.apk", apk.name)
+        assertEquals(13612238L, apk.size)
+        assertEquals("d8327c96abac7738e2fcd7ea9a95dceabe8d746cd659eb9e9d518a515aecf443", apk.sha256)
+    }
+
     private val apkUrl = "https://github.com/vanvan-program/van-schedule/releases/download/v0.5.5/van-schedule-0.5.5-arm64.apk"
 
     @Test fun downloadSourcesTryDirectFirstThenMirrors() {

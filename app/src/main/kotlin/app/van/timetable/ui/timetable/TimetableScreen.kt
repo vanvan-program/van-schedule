@@ -111,7 +111,17 @@ fun Timetable(
                 onSelectSchedule = onSelectSchedule,
                 nav = nav,
             )
-            NextClassBar(s, now, p, nav)
+            // 「日 | 周」摆到明面上：此前只有「更多」菜单里一个「切换为日列表」，
+            // 藏在两层菜单下，多数人找不到，看着像没有日课表。默认仍是周课表。
+            // 与「下一节」提示条同一行：没有下一节课时这一行就只有切换控件，不会白占高度。
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                TimetableModeSwitch(daily = daily) { pager.toggleMode() }
+                Box(Modifier.weight(1f)) { NextClassBar(s, now, p, nav) }
+            }
             if (actualWeek !in 1..s.maxWeeks) Muted(if (actualWeek < 1) "学期尚未开始" else "本学期已结束")
             if (daily) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

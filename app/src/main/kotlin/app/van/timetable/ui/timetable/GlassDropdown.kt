@@ -4,7 +4,6 @@ package app.van.timetable.ui.timetable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -17,6 +16,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -102,6 +103,10 @@ internal fun GlassDropdownItem(
     onClick: () -> Unit,
 ) {
     val colors = LocalVan.current
+    // 只留一个触发源：下拉面板的拖选层（dropdownPanelEntry）在抬手时已经会调用 action，
+    // 再叠一个 clickable 会让同一次点按触发两遍。对「切换日/周」这类非幂等操作，
+    // 触发两遍等于切过去又切回来，表现就是「点了没反应」。
+    // 无障碍与测试用的 performClick() 由显式的 onClick 语义动作提供。
     Box(
         Modifier.fillMaxWidth()
             .clip(ContinuousRoundedRectangle(12.dp))
@@ -110,7 +115,18 @@ internal fun GlassDropdownItem(
                 selected = selected,
                 action = onClick,
             )
-            .clickable(enabled = enabled, onClick = onClick)
+            .then(
+                if (enabled) {
+                    Modifier.semantics {
+                        onClick(label = "选择") {
+                            onClick()
+                            true
+                        }
+                    }
+                } else {
+                    Modifier
+                }
+            )
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(

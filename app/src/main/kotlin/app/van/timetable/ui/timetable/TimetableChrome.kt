@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.van.timetable.domain.*
 import app.van.timetable.ui.LocalVan
+import app.van.timetable.ui.VanColors
 import app.van.timetable.ui.courseColor
 import app.van.timetable.ui.courseTextColor
 import app.van.timetable.ui.weekdays
@@ -191,6 +192,77 @@ internal fun ReturnToWeekChip(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/**
+ * 课表页顶部的「日 | 周」分段控件。
+ *
+ * 0.5.10 及以前，周课表 ↔ 日列表只有一个入口：顶栏「更多」菜单里的「切换为日列表」。
+ * 那是两层深的下拉菜单，文案又叫「日列表」，多数人根本找不到，看起来就像没有日课表。
+ *
+ * 现在它和 HTML 原型（`课表UI/index.html` 的 `.vswitch`）一样摆在明面上：
+ * 顶栏下方一行，左端对齐，随时能看见当前在哪一边。默认仍是周课表。
+ */
+@Composable
+internal fun TimetableModeSwitch(
+    daily: Boolean,
+    modifier: Modifier = Modifier,
+    onToggleMode: () -> Unit,
+) {
+    val colors = LocalVan.current
+    Row(
+        modifier
+            .testTag("mode-switch")
+            .heightIn(min = 32.dp)
+            .clip(ContinuousRoundedRectangle(10.dp))
+            .background(colors.surface, ContinuousRoundedRectangle(10.dp))
+            .border(1.dp, colors.inactive, ContinuousRoundedRectangle(10.dp))
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // 「周」在左、「日」在右，与周课表为默认视图保持一致：默认高亮的就是左边那个。
+        ModeSwitchItem("周", selected = !daily, colors = colors, testTag = "mode-week") {
+            if (daily) onToggleMode()
+        }
+        ModeSwitchItem("日", selected = daily, colors = colors, testTag = "mode-day") {
+            if (!daily) onToggleMode()
+        }
+    }
+}
+
+@Composable
+private fun ModeSwitchItem(
+    label: String,
+    selected: Boolean,
+    colors: VanColors,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .clip(ContinuousRoundedRectangle(8.dp))
+            .background(if (selected) colors.blue.copy(alpha = if (colors.dark) 0.24f else 0.14f) else Color.Transparent)
+            .clickable(
+                onClickLabel = if (selected) "$label 课表（当前）" else "切换到$label 课表",
+                onClick = onClick,
+            )
+            .semantics {
+                contentDescription = if (selected) "$label 课表，当前" else "切换到$label 课表"
+            }
+            .testTag(testTag)
+            .padding(horizontal = 14.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (selected) colors.blue else colors.muted,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+        )
     }
 }
 

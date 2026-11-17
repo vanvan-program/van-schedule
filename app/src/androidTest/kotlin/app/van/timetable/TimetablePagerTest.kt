@@ -173,6 +173,32 @@ class TimetablePagerTest {
         ui.onNodeWithText("第1周 ▾").assertExists()
     }
 
+    /**
+     * 「日 | 周」必须摆在明面上，而不是只能从「更多」菜单里找。
+     *
+     * 0.5.10 及以前唯一的入口是顶栏「更多 → 切换为日列表」：两层菜单、文案又叫「日列表」，
+     * 用户反馈「切换日课表为什么不行」其实是根本找不到这个开关。
+     */
+    @Test
+    fun modeSwitchIsVisibleAndTogglesBothWays() {
+        seed()
+        // 默认周课表：「周」高亮，「周」的点击不应把模式切走
+        ui.onNodeWithTag("mode-switch").assertExists()
+        ui.onNodeWithTag("week-viewport").assertExists()
+        ui.onNodeWithTag("mode-week").performClick()
+        ui.onNodeWithTag("week-viewport").assertExists()
+
+        // 点「日」进入日课表，且不需要打开任何菜单
+        ui.onNodeWithTag("mode-day").performClick()
+        ui.onNodeWithTag("day-list").assertExists()
+        ui.onNodeWithTag("week-viewport").assertDoesNotExist()
+
+        // 点「周」切回周课表
+        ui.onNodeWithTag("mode-week").performClick()
+        ui.onNodeWithTag("week-viewport").assertExists()
+        ui.onNodeWithTag("day-list").assertDoesNotExist()
+    }
+
     @Test
     fun openingBeforeSemesterStillShowsActualTodayInDailyMode() {
         seed(today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusWeeks(2))

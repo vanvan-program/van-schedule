@@ -78,7 +78,10 @@ class LocalSmokeTest {
             }
             ui.onNodeWithText("晚间验证课程").assertIsDisplayed()
             ui.onNodeWithText("示例楼 B512", useUnmergedTree = true).assertIsDisplayed()
-            ui.onNodeWithText("日", useUnmergedTree = true).assertIsDisplayed()
+            // 星期表头的「日」：用 tag 精确定位（d 从 0 开始，周日 = 6），
+            // 避免与顶栏「日 | 周」切换里的「日」重名
+            ui.onNode(hasTestTag("week-day-1-6") and hasText("日"), useUnmergedTree = true)
+                .assertIsDisplayed()
             ui.onNodeWithText("20:40", useUnmergedTree = true).assertIsDisplayed()
             val card = ui.onNodeWithText("晚间验证课程").fetchSemanticsNode().boundsInRoot
             assertTrue(card.bottom <= viewport.bottom + 1f)
