@@ -41,6 +41,24 @@ object UpdateInstaller {
         data class Failed(val message: String) : Download
     }
 
+    /**
+     * 下载阶段。界面靠它区分「正在连接」「正在下载」「正在校验」，
+     * 否则换源时进度归零、校验时停在 100%，用户看到的只是一个不动或乱跳的百分比。
+     */
+    sealed interface Stage {
+        /** 正在连接某个下载地址。[index] 从 1 开始，[count] 是本次可用的地址总数。 */
+        data class Connecting(val viaMirror: Boolean, val index: Int, val count: Int) : Stage
+
+        /** 正在下载。[bytes] 已收字节数，[total] 是总字节数（服务器没给长度时为 null）。 */
+        data class Downloading(val viaMirror: Boolean, val bytes: Long, val total: Long?) : Stage
+
+        /** 下载完成，正在校验大小、SHA-256 与签名。 */
+        data class Verifying(val viaMirror: Boolean) : Stage
+
+        /** 安装包已就绪（含直接复用缓存的情况）。 */
+        data object Ready : Stage
+    }
+
     /** 缓存目录里的安装包位置；同名文件存在说明上次已经下好。 */
     fun cachedFile(context: Context, version: String): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
@@ -66,7 +84,8 @@ object UpdateInstaller {
             .getOrDefault(false)
 
     /**
-     * 下载安装包。[onProgress] 回调 0–100，可能在后台线程被调用。
+     * 下载安装包。[onProgress] 回调 0–100，可能在后台线程被调用；[onStage] 报告当前阶段，
+     * 供界面显示「正在连接 / 正在下载 x MB / 正在校验」这类提示。
      * 已存在且校验通过的缓存文件会直接复用，避免重复下载十几兆。
      *
      * 国内直连 GitHub 常常很慢，所以按 [UpdateCheck.downloadSources] 的顺序换源：
@@ -78,10 +97,12 @@ object UpdateInstaller {
         version: String,
         useMirror: Boolean = true,
         onProgress: (Int) -> Unit = {},
+        onStage: (Stage) -> Unit = {},
     ): Download {
         val target = cachedFile(context, version)
         if (target.isFile && verifyFile(context, target, asset)) {
             onProgress(100)
+            onStage(Stage.Ready)
             return Download.Ready(target)
         }
         target.delete()
@@ -89,10 +110,17 @@ object UpdateInstaller {
         if (sources.isEmpty()) return Download.Failed("没有可用的下载地址")
         var lastMessage: String? = null
         sources.forEachIndexed { index, source ->
+            val viaMirror = index > 0
             onProgress(0)
+            onStage(Stage.Connecting(viaMirror = viaMirror, index = index + 1, count = sources.size))
             val hasNext = index < sources.lastIndex
-            when (val result = attempt(context, source, asset, version, target, hasNext, onProgress)) {
-                is Download.Ready -> return Download.Ready(result.file, viaMirror = index > 0)
+            val result =
+                attempt(context, source, asset, version, target, hasNext, onProgress, onStage, viaMirror)
+            when (result) {
+                is Download.Ready -> {
+                    onStage(Stage.Ready)
+                    return Download.Ready(result.file, viaMirror = viaMirror)
+                }
                 is Download.Failed -> lastMessage = result.message
             }
         }
@@ -106,6 +134,9 @@ object UpdateInstaller {
     private const val SLOW_CHECK_AFTER_MS = 8_000L
     private const val SLOW_KBPS = 60.0
 
+    /** 服务器没给内容长度时，每收到这么多字节刷新一次进度提示。 */
+    private const val DOWNLOAD_STAGE_STEP = 256 * 1024L
+
     /** 从单个地址下载并校验；失败时清理半成品，返回可直接展示的原因。 */
     private fun attempt(
         context: Context,
@@ -115,6 +146,8 @@ object UpdateInstaller {
         target: File,
         allowSlowFallback: Boolean,
         onProgress: (Int) -> Unit,
+        onStage: (Stage) -> Unit,
+        viaMirror: Boolean,
     ): Download {
         val temp = File(target.parentFile, "${target.name}.part")
         temp.delete()
@@ -135,6 +168,7 @@ object UpdateInstaller {
             val digest = MessageDigest.getInstance("SHA-256")
             var written = 0L
             var lastPercent = -1
+            var lastStageBytes = 0L
             val startedAt = System.currentTimeMillis()
             connection.inputStream.use { input ->
                 temp.outputStream().use { output ->
@@ -150,7 +184,12 @@ object UpdateInstaller {
                             if (percent != lastPercent) {
                                 lastPercent = percent
                                 onProgress(percent)
+                                onStage(Stage.Downloading(viaMirror, written, total))
                             }
+                        } else if (written - lastStageBytes >= DOWNLOAD_STAGE_STEP) {
+                            // 服务器没给长度：按字节数节流，让界面至少能看到「已收多少」在动。
+                            lastStageBytes = written
+                            onStage(Stage.Downloading(viaMirror, written, null))
                         }
                         if (allowSlowFallback) {
                             val elapsed = System.currentTimeMillis() - startedAt
@@ -166,6 +205,7 @@ object UpdateInstaller {
                 temp.delete()
                 return Download.Failed("下载到的安装包是空的，请稍后重试")
             }
+            onStage(Stage.Verifying(viaMirror))
             if (asset.sha256 != null) {
                 val actual = digest.digest().joinToString("") { "%02x".format(it) }
                 if (!actual.equals(asset.sha256, ignoreCase = true)) {

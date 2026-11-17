@@ -56,10 +56,36 @@ class InAppUpdateInstallerTest {
                 size = 1024,
             )
         var lastPercent = -1
-        val result = UpdateInstaller.download(context, asset, "9.9.9-none", useMirror = false) { lastPercent = it }
+        val result =
+            UpdateInstaller.download(context, asset, "9.9.9-none", useMirror = false, onProgress = { lastPercent = it })
         assertTrue("应当干净地失败：$result", result is UpdateInstaller.Download.Failed)
         val leftover = UpdateInstaller.cachedFile(context, "9.9.9-none")
         assertFalse("失败后不能留下安装包", leftover.exists())
         assertFalse("失败后不能留下半成品", File(leftover.parentFile, "${leftover.name}.part").exists())
+    }
+
+    @Test fun downloadReportsConnectingStageBeforeGivingUp() {
+        val asset =
+            app.van.timetable.domain.ApkAsset(
+                name = "van-schedule-test-arm64.apk",
+                url = "https://mirror-does-not-exist.invalid/van-schedule-test.apk",
+                sha256 = "0".repeat(64),
+                size = 1024,
+            )
+        val stages = mutableListOf<UpdateInstaller.Stage>()
+        val result =
+            UpdateInstaller.download(
+                context,
+                asset,
+                "9.9.9-stage",
+                useMirror = false,
+                onProgress = {},
+                onStage = { stages += it },
+            )
+        assertTrue("应当干净地失败：$result", result is UpdateInstaller.Download.Failed)
+        val first = stages.firstOrNull()
+        assertTrue("失败之前必须先报「正在连接」，界面才会显示提示：$stages", first is UpdateInstaller.Stage.Connecting)
+        assertEquals(1, (first as UpdateInstaller.Stage.Connecting).index)
+        assertFalse("失败时不能报就绪", stages.any { it is UpdateInstaller.Stage.Ready })
     }
 }

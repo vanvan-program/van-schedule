@@ -41,7 +41,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
     var state by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var dialog by remember { mutableStateOf(false) }
     var openFailed by remember { mutableStateOf(false) }
-    var downloadPercent by remember { mutableStateOf<Int?>(null) }
+    var download by remember { mutableStateOf<DownloadUi?>(null) }
     var installNote by remember { mutableStateOf<String?>(null) }
     var needsPermission by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -49,7 +49,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
     /** 点击「立即更新」：应用内下载安装包，再交给系统安装器覆盖安装。 */
     fun startUpdate(release: AppRelease) {
         dialog = false
-        if (downloadPercent != null) return
+        if (download is DownloadUi.Busy) return
         val asset = release.apk
         if (asset == null) {
             installNote = "这次发布没有附带安装包，只能改用下面的浏览器下载。"
@@ -62,15 +62,28 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
         }
         needsPermission = false
         installNote = null
-        downloadPercent = 0
+        download = DownloadUi.Busy(stage = null, percent = 0)
         scope.launch {
             val result =
                 withContext(Dispatchers.IO) {
-                    UpdateInstaller.download(context, asset, release.version, p.useDownloadMirror) { percent ->
-                        scope.launch(Dispatchers.Main) { downloadPercent = percent }
-                    }
+                    UpdateInstaller.download(
+                        context = context,
+                        asset = asset,
+                        version = release.version,
+                        useMirror = p.useDownloadMirror,
+                        onProgress = { percent ->
+                            scope.launch(Dispatchers.Main) {
+                                (download as? DownloadUi.Busy)?.let { download = it.copy(percent = percent) }
+                            }
+                        },
+                        onStage = { stage ->
+                            scope.launch(Dispatchers.Main) {
+                                (download as? DownloadUi.Busy)?.let { download = it.copy(stage = stage) }
+                            }
+                        },
+                    )
                 }
-            downloadPercent = null
+            download = null
             when (result) {
                 is UpdateInstaller.Download.Ready -> {
                     val opened = UpdateInstaller.install(context, result.file)
@@ -79,7 +92,8 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                         if (opened) "已打开系统安装界面$via，按提示点「安装」就能完成更新，课表和设置会保留。"
                         else "没能调起系统安装界面$via，请确认已允许安装未知应用，或改用浏览器下载。"
                 }
-                is UpdateInstaller.Download.Failed -> installNote = result.message
+                // 失败原因留在页面上，配「重试」，不要一闪而过。
+                is UpdateInstaller.Download.Failed -> download = DownloadUi.Failed(result.message)
             }
         }
     }
@@ -204,19 +218,21 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                     } else {
                         Muted("这条更新说明只包含版本号，请到发布页查看完整内容。")
                     }
+                    val busy = download as? DownloadUi.Busy
+                    val failure = download as? DownloadUi.Failed
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(
                             onClick = { startUpdate(release) },
-                            enabled = downloadPercent == null && release.apk != null,
+                            enabled = busy == null && release.apk != null,
                             modifier = Modifier.testTag("install-update"),
                         ) {
-                            if (downloadPercent != null) {
+                            if (busy != null) {
                                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                                 Spacer(Modifier.width(10.dp))
-                                Text("正在下载 ${downloadPercent}%")
+                                Text(updateButtonLabel(busy.stage, busy.percent))
                             } else {
                                 Text("立即更新")
                             }
@@ -225,11 +241,33 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                             Text("改用浏览器下载")
                         }
                     }
-                    if (downloadPercent != null) {
-                        LinearProgressIndicator(
-                            progress = { (downloadPercent ?: 0) / 100f },
-                            modifier = Modifier.fillMaxWidth().testTag("update-progress"),
+                    if (busy != null) {
+                        val stage = busy.stage
+                        if (stage is UpdateInstaller.Stage.Downloading) {
+                            LinearProgressIndicator(
+                                progress = { busy.percent / 100f },
+                                modifier = Modifier.fillMaxWidth().testTag("update-progress"),
+                            )
+                        } else {
+                            // 连接、校验、安装这几步没有可信的百分比，用不确定进度条，别硬装成 0%。
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().testTag("update-progress"))
+                        }
+                        Muted(updateStageHint(stage, busy.percent))
+                    }
+                    if (failure != null) {
+                        Text(
+                            "下载失败",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.testTag("update-error"),
                         )
+                        Muted(failure.message)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = { startUpdate(release) }) { Text("重试") }
+                            TextButton(onClick = { openFailed = !openPage(release.pageUrl) }) {
+                                Text("改用浏览器下载")
+                            }
+                        }
                     }
                     if (release.apk == null) {
                         Muted("这次发布没有附带安装包，应用内更新不可用，请用浏览器下载。")
@@ -243,7 +281,9 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                         }
                     }
                     if (installNote != null) Muted(installNote!!)
-                    else if (!needsPermission) Muted("下载后由系统弹窗确认安装；包名与原签名不变，课表和设置会保留。")
+                    else if (!needsPermission && failure == null && busy == null) {
+                        Muted("下载后由系统弹窗确认安装；包名与原签名不变，课表和设置会保留。")
+                    }
                     if (openFailed) Muted("没有打开可用的浏览器，请手动访问：${release.pageUrl}")
                 }
             }
@@ -299,6 +339,13 @@ private sealed interface UpdateState {
     data class Newer(val release: AppRelease, val checkedAt: String) : UpdateState
 
     data class Failed(val message: String) : UpdateState
+}
+
+/** 应用内下载的状态：进行中（阶段 + 百分比）或失败（原因 + 重试）。 */
+private sealed interface DownloadUi {
+    data class Busy(val stage: UpdateInstaller.Stage?, val percent: Int) : DownloadUi
+
+    data class Failed(val message: String) : DownloadUi
 }
 
 private data class InstalledVersion(val name: String, val code: Long)
