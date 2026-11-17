@@ -7,6 +7,15 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.5.11 日/周切换摆到明面上
+
+本版版本号 `0.5.11`（`versionCode 61`）。
+
+- 课表页顶栏下方新增可见的「周 | 日」分段控件（`mode-switch`，与「下一节」提示条同一行）。此前周课表 ↔ 日列表只有一个入口：顶栏「更多」菜单里的「切换为日列表」，两层菜单深、文案又叫「日列表」，多数人找不到，看起来像没有日课表。
+- 默认仍是周课表（`daily = false` 未改），「更多」菜单里的旧入口保留，不破坏既有习惯与测试。
+- 修复下拉菜单项被触发两次的问题：`GlassDropdownItem` 原先同时挂了 `clickable` 与拖选层的 `action`，手指未移动时两条路径都会触发；对「切换日/周」这类非幂等操作等于切过去又切回来，表现就是「点了没反应」。现在只保留拖选层作为唯一触发源，另加显式 `onClick` 语义动作供无障碍与测试使用。
+- 测试：新增 `modeSwitchIsVisibleAndTogglesBothWays`；`LocalSmokeTest` 里对「日」的文本断言改用 `week-day-1-6` 标签精确定位，避免与新控件重名。
+
 ## 0.5.10 去掉午休 / 晚休横条
 
 本版版本号 `0.5.10`（`versionCode 60`）。
