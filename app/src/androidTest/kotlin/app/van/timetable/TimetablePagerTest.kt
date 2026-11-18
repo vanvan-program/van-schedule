@@ -174,29 +174,29 @@ class TimetablePagerTest {
     }
 
     /**
-     * 「日 | 周」必须摆在明面上，而不是只能从「更多」菜单里找。
+     * 日 / 周必须摆在明面上，而且是一枚按钮：显示当前模式，点一下切到另一边。
      *
      * 0.5.10 及以前唯一的入口是顶栏「更多 → 切换为日列表」：两层菜单、文案又叫「日列表」，
      * 用户反馈「切换日课表为什么不行」其实是根本找不到这个开关。
+     * 0.5.11 起改成两格分段控件，0.5.14 收成一枚按钮（两格里总有一格是「当前、点了没反应」的死格）。
      */
     @Test
-    fun modeSwitchIsVisibleAndTogglesBothWays() {
+    fun modeToggleSwitchesBothWaysFromASingleButton() {
         seed()
-        // 默认周课表：「周」高亮，「周」的点击不应把模式切走
+        // 默认周课表：按钮显示「周」，点一下进入日课表
         ui.onNodeWithTag("mode-switch").assertExists()
         ui.onNodeWithTag("week-viewport").assertExists()
-        ui.onNodeWithTag("mode-week").performClick()
-        ui.onNodeWithTag("week-viewport").assertExists()
-
-        // 点「日」进入日课表，且不需要打开任何菜单
-        ui.onNodeWithTag("mode-day").performClick()
+        ui.onNode(hasTestTag("mode-switch") and hasText("周")).assertExists()
+        ui.onNodeWithTag("mode-switch").performClick()
         ui.onNodeWithTag("day-list").assertExists()
         ui.onNodeWithTag("week-viewport").assertDoesNotExist()
 
-        // 点「周」切回周课表
-        ui.onNodeWithTag("mode-week").performClick()
+        // 再点一下切回周课表，按钮文字也跟着变回来
+        ui.onNode(hasTestTag("mode-switch") and hasText("日")).assertExists()
+        ui.onNodeWithTag("mode-switch").performClick()
         ui.onNodeWithTag("week-viewport").assertExists()
         ui.onNodeWithTag("day-list").assertDoesNotExist()
+        ui.onNode(hasTestTag("mode-switch") and hasText("周")).assertExists()
     }
 
     @Test

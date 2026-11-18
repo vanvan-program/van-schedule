@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.van.timetable.domain.*
@@ -100,40 +101,75 @@ fun Courses(s: Schedule, now: Instant, nav: (String) -> Unit) {
                     }
                     .sortedWith { a, b -> NaturalCourseSort.compare(a.primary.name, b.primary.name) }
             }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             if (filtered.isEmpty()) item { Muted("没有符合条件的课程") }
             items(filtered, key = { it.primary.id }) { group ->
                 val c = group.primary
-                // 紧凑课程卡：内边距 18→12/10、行距 10→3，卡片整体矮一截，一屏能多塞几门。
+                val sessions = remember(s, group) {
+                    s.sessions.filter { n -> group.members.any { it.id == n.courseId } }
+                }
+                // 紧凑课程卡：只留「课程名 + 一行摘要」。原来把每节课的周次、星期、节次、地点
+                // 逐行铺开，一节课两行、三门课就顶掉半屏；这里合并成一行并单行省略，
+                // 具体细节点进详情页看。单卡从约 130dp 降到约 46dp。
                 Surface(
                     Modifier.fillMaxWidth().testTag("course-group-${c.id}").clickable { nav("detail:${c.id}") },
-                    shape = ContinuousRoundedRectangle(16.dp),
+                    shape = ContinuousRoundedRectangle(14.dp),
                     color = LocalVan.current.surface,
                 ) {
                     Column(
-                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                        Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                        verticalArrangement = Arrangement.spacedBy(1.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                Modifier.size(10.dp)
+                                Modifier.size(9.dp)
                                     .background(LocalVan.current.courseColor(c), RoundedCornerShape(3.dp))
                             )
-                            Spacer(Modifier.width(8.dp))
-                            Text(c.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 19.sp)
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                c.name,
+                                modifier = Modifier.weight(1f),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            val badge = if (group.members.size > 1) "${group.members.size} 类" else "${sessions.size} 节"
+                            Text(badge, color = LocalVan.current.muted, fontSize = 11.sp, lineHeight = 15.sp)
                         }
-                        if (group.members.size > 1) Muted(group.members.map { it.groupSectionLabel() }.distinct().joinToString(" · "))
-                        s.sessions
-                            .filter { n -> group.members.any { it.id == n.courseId } }
-                            .forEach { n ->
-                                if (n.date == null) Muted("周次：${formatWeeks(n.weeks)}")
-                                Muted(
-                                    "${if(n.date!=null)n.date else if(n.day in 1..7)weekdays[n.day-1]else"整周"} · ${if(n.mode==TimeMode.SECTIONS)"${n.startSection}–${n.endSection}节"else if(n.mode==TimeMode.CLOCK)"${n.start}–${n.end}"else"无固定时间"} · ${n.place}"
-                                )
-                            }
+                        Text(
+                            sessions.joinToString(" · ") { n -> courseSessionSummary(n) }
+                                .ifEmpty { "暂无排课" },
+                            color = LocalVan.current.muted,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * 课程卡里那一行摘要：只保留「哪天 + 第几节 + 地点」。
+ *
+ * 周次（`formatWeeks`）最占宽度，且多数课程整学期同一套周次，放在列表里价值低，
+ * 进详情页即可看到；这里省掉它，一行就能放下，卡片因此只有两行高。
+ */
+private fun courseSessionSummary(n: CourseSession): String {
+    val whenPart = when {
+        n.date != null -> n.date
+        n.day in 1..7 -> weekdays[n.day - 1]
+        else -> "整周"
+    }
+    val timePart = when (n.mode) {
+        TimeMode.SECTIONS -> "${n.startSection}–${n.endSection}节"
+        TimeMode.CLOCK -> "${n.start}–${n.end}"
+        else -> "无固定时间"
+    }
+    return "$whenPart $timePart · ${n.place}"
 }

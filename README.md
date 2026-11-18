@@ -7,6 +7,14 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.5.14 日/周合成一个按键、课程页只留摘要
+
+本版版本号 `0.5.14`（`versionCode 64`）。
+
+- **日/周合并成一枚按键**：`TimetableModeToggle` 取代 0.5.11 引入的 `TimetableModeSwitch`。按钮上显示**当前**模式（「周」或「日」），点一下切到另一边，旁边一个 `SwapHoriz` 图标表明这是切换。两格分段控件的问题是：只有两个状态时，其中一格永远是「当前、点了没反应」的死格，既费宽度又费解。测试标签 `mode-switch` 保留，`mode-week` / `mode-day` 两格已删除。
+- **课程页只留摘要**：课程卡从「课程名 + 每节课两行（周次、星期/节次/地点）」改成「课程名 + 一行摘要（星期 节次 · 地点）」，单行省略，右侧显示节数或类型数。单卡约 130dp → 约 46dp。周次信息（`formatWeeks`）不再出现在列表里，进详情页可见。
+- 相关测试：`TimetablePagerTest.modeSwitchIsVisibleAndTogglesBothWays` 改写为 `modeToggleSwitchesBothWaysFromASingleButton`，改为点同一枚按钮来回切换，并断言按钮文字跟着变。
+
 ## 0.5.13 导航悬浮岛加强、课程卡更紧凑、补齐历史版本
 
 本版版本号 `0.5.13`（`versionCode 63`）。
