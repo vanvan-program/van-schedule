@@ -57,7 +57,7 @@ internal fun TimetableHeader(
     var scheduleDropdown by remember { mutableStateOf(false) }
     // 周次在剩余空间居中，操作区独立占位，避免窄屏或大字体时相互覆盖。
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        Modifier.fillMaxWidth().heightIn(min = 44.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 左侧与周次右侧的空位等宽，周次的中心点固定；课表药丸只在这块空位里伸缩。

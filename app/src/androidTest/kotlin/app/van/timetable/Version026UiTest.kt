@@ -142,7 +142,7 @@ class Version026UiTest {
         ui.onNodeWithTag("holiday-course-${n.id}@$today").performClick()
         ui.onNodeWithText("仅删除本日本节").assertDoesNotExist()
         device.pressBack()
-        ui.onNodeWithText("我的").performClick()
+        ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("帮助与关于").performScrollTo().performClick()
         ui.onNodeWithText("历史版本更新").performScrollTo().performClick()
         ui.onNodeWithTag("changelog-list").assertExists()

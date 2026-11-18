@@ -190,33 +190,37 @@ fun CourseRow(
         color = surface,
         contentColor = if (inactive) c.inactiveText else if (pastel) accent else c.text,
     ) {
-        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
-                Modifier.width(5.dp)
-                    .height(66.dp)
+                Modifier.width(4.dp)
+                    .height(56.dp)
                     .background(accent, ContinuousRoundedRectangle(3.dp))
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row {
                     Text(
                         (if (inactive) "[放假]" else "") +
                             (if (o.adjusted) "【调】" else "") +
                             o.course.name,
+                        fontSize = 15.sp,
+                        lineHeight = 19.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
-                    if (current) Text("正在上课", color = if (pastel) accent else c.blue, fontSize = 12.sp)
+                    if (current) Text("正在上课", color = if (pastel) accent else c.blue, fontSize = 12.sp, lineHeight = 16.sp)
                 }
                 Text(
                     o.place.ifBlank { "地点未填写" }.let { if (pastel) "@$it" else it },
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     color = if (pastel) accent.copy(alpha = 0.9f) else c.muted,
                 )
-                Text("${o.start}–${o.end}" + (if (conflict) " · 时间冲突" else ""), fontSize = 14.sp)
+                Text("${o.start}–${o.end}" + (if (conflict) " · 时间冲突" else ""), fontSize = 12.sp, lineHeight = 16.sp)
                 if (o.session.teacher.isNotBlank()) {
                     Text(
                         o.session.teacher,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         color = if (pastel) accent.copy(alpha = 0.85f) else c.muted,
                     )
                 }

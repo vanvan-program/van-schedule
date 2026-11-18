@@ -111,7 +111,7 @@ class Version028UiTest {
 
     @Test fun manualSettingAndReturnToAutoSurviveActivityRecreationAndBackup() {
         val s = seed()
-        ui.onNodeWithText("我的").performClick()
+        ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("外观设置").performScrollTo().performClick()
         ui.onNode(isToggleable() and hasAnyAncestor(hasTestTag("course-gap-setting")))
             .performScrollTo().performClick()

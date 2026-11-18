@@ -323,18 +323,20 @@ fun VanApp(
                 },
                 bottomBar = {
                     if (route == VanRoute.Home) {
-                        val navShape = ContinuousRoundedRectangle(28.dp)
+                        // 悬浮导航：与屏幕左右、底部都留出明显间距，配更强的投影，
+                        // 让它像一枚浮在内容之上的胶囊，而不是贴着底边的横条。
+                        val navShape = ContinuousRoundedRectangle(30.dp)
                         val navBg = c.surface
                         CompositionLocalProvider(LocalDropdownPanelDragSelect provides bottomDragSelect) {
                             Box(
                                 Modifier.navigationBarsPadding()
-                                    .padding(horizontal = 18.dp, vertical = 4.dp)
+                                    .padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 10.dp)
                                     .shadow(
-                                        elevation = 12.dp,
+                                        elevation = 18.dp,
                                         shape = navShape,
                                         clip = false,
-                                        ambientColor = Color.Black.copy(alpha = 0.18f),
-                                        spotColor = Color.Black.copy(alpha = 0.22f),
+                                        ambientColor = Color.Black.copy(alpha = 0.22f),
+                                        spotColor = Color.Black.copy(alpha = 0.28f),
                                     )
                                     .clip(navShape)
                                     .then(

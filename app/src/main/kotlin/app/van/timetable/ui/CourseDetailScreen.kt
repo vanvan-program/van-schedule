@@ -119,7 +119,7 @@ fun Detail(
                 { vm.course(s, c.copy(reminder = it), sessions, {}) },
                 "跟随全局提前量，可在编辑中覆盖",
             )
-            if (!state.preferences.reminders) Muted("全局提醒尚未开启，请在我的 → 提醒设置中开启")
+            if (!state.preferences.reminders) Muted("全局提醒尚未开启，请在 设置 → 提醒与小米手环 中开启")
         }
         val activeWeek = date?.let { CourseEngine.week(s, LocalDate.parse(it)).takeIf { w -> w in 1..s.maxWeeks } }
         var editWeekNoteFor by remember { mutableStateOf<Int?>(null) }

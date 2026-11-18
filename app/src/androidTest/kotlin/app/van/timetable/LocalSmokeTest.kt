@@ -101,7 +101,7 @@ class LocalSmokeTest {
         seed()
         ui.onNodeWithText("课程", useUnmergedTree = true).performClick()
         ui.onNodeWithText("搜索课程、老师、地点").assertExists()
-        ui.onNodeWithText("我的", useUnmergedTree = true).performClick()
+        ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("外观设置").performClick()
         ui.onNodeWithText("深色").performClick()
         ui.waitUntil(10000) {
@@ -119,7 +119,7 @@ class LocalSmokeTest {
         ui.waitForIdle()
         UiDevice.getInstance(instrumentation)
             .takeScreenshot(File(ui.activity.getExternalFilesDir(null), "dark-timetable.png"))
-        ui.onNodeWithText("我的", useUnmergedTree = true).performClick()
+        ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("提醒与小米手环").performScrollTo().performClick()
         ui.onNodeWithText("课前提醒").assertExists()
     }

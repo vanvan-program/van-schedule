@@ -54,7 +54,7 @@ class NavigationMotionTest {
 
     @Test fun interruptedTabTransitionsKeepTheSelectedWeek() {
         ui.mainClock.autoAdvance = false
-        ui.onNodeWithText("我的").performClick()
+        ui.onNodeWithTag("tab-2").performClick()
         ui.mainClock.advanceTimeBy(80)
         screenshot("motion-tabs-midway.png")
         ui.onNodeWithText("课程", useUnmergedTree = true).performClick()

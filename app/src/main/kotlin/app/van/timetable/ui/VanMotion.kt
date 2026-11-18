@@ -78,7 +78,7 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
         listOf(
             "课表" to Icons.Outlined.CalendarMonth,
             "课程" to Icons.Outlined.MenuBook,
-            "我的" to Icons.Outlined.PersonOutline,
+            "设置" to Icons.Outlined.Settings,
         )
     }
     val density = LocalDensity.current
@@ -113,6 +113,7 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
                 )
                 Column(
                     Modifier.weight(1f).heightIn(min = navMinHeight)
+                        .testTag("tab-$index")
                         .dropdownPanelEntry(
                             enabled = true,
                             selected = tab == index,

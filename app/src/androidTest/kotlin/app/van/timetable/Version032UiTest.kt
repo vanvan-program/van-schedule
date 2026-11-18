@@ -61,7 +61,7 @@ class Version032UiTest {
         ui.onNodeWithText("编辑整门课程").performScrollTo().performClick()
     }
     private fun routines() {
-        ui.onNodeWithText("我的").performClick()
+        ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("作息管理").performScrollTo().performClick()
     }
 
@@ -202,7 +202,7 @@ class Version032UiTest {
     }
 
     @Test fun historyExpandsLatestAndAllVersionsHaveNumberedCategories() {
-        seed(); ui.onNodeWithText("我的").performClick()
+        seed(); ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("帮助与关于").performScrollTo().performClick()
         ui.onNodeWithText("历史版本更新").performScrollTo().performClick()
         ui.onNodeWithText("1. 【优化】“课程”页", substring = true).assertExists()

@@ -60,23 +60,25 @@ fun Courses(s: Schedule, now: Instant, nav: (String) -> Unit) {
     val week = CourseEngine.week(s, today)
     val currentMonday = today.minusDays((today.dayOfWeek.value - 1).toLong())
     Column(
-        Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "课程",
-                fontSize = 28.sp,
+                fontSize = 22.sp,
+                lineHeight = 26.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f),
             )
             OutlinedButton(
                 onClick = { nav("notes") },
                 modifier = Modifier.testTag("all-course-notes-button"),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
             ) {
-                Icon(Icons.Outlined.EditNote, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text("课程备注")
+                Icon(Icons.Outlined.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("课程备注", fontSize = 13.sp)
             }
             IconButton(onClick = { nav("edit:new") }) { Icon(Icons.Outlined.Add, "新增课程") }
         }
@@ -97,7 +99,7 @@ fun Courses(s: Schedule, now: Instant, nav: (String) -> Unit) {
                     }
                     .sortedWith { a, b -> NaturalCourseSort.compare(a.primary.name, b.primary.name) }
             }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (filtered.isEmpty()) item { Muted("没有符合条件的课程") }
             items(filtered, key = { it.primary.id }) { group ->
                 val c = group.primary

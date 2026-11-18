@@ -40,7 +40,7 @@ fun DayList(
     }
     val holiday = remember(s, date) { CourseEngine.holiday(s, date) }
     val conflicts = remember(list) { CourseEngine.conflicts(list).flatten().map { it.id }.toSet() }
-    LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (list.isEmpty() || holiday != null)
             item {
                 Panel {

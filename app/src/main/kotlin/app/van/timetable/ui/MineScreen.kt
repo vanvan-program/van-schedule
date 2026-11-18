@@ -16,10 +16,10 @@ import androidx.compose.ui.unit.sp
 import com.haooz.softglass.shape.ContinuousRoundedRectangle
 
 /**
- * 「我的」：分组式设置页。
+ * 「设置」：分组式设置页。
  *
- * 分成 课表配置 / 外观与提醒 / 数据 / 关于 四组，组内共享一张圆角卡、行间有极淡分隔线，
- * 这样十几项设置不用一条条独立卡片平铺也能扫读。
+ * 底部第三个 Tab 从「我的」改为「设置」——这一页本来就是纯设置项，
+ * 分成 课表配置 / 外观与提醒 / 数据 / 关于 四组，组内共享一张圆角卡、行间有极淡分隔线。
  */
 @Composable
 fun Mine(state: VanState, nav: (String) -> Unit) {
@@ -29,7 +29,7 @@ fun Mine(state: VanState, nav: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Spacer(Modifier.height(6.dp))
-        Text("我的", fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold)
+        Text("设置", fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold)
         ProfileHeader(
             title = state.active?.let { "${it.name}" } ?: "尚未启用课表",
             subtitle = state.active?.let { "${it.courses.size} 门课程 · 本地优先 · GPL-3.0" }

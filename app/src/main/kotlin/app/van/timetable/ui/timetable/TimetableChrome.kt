@@ -71,7 +71,7 @@ internal fun NextClassBar(s: Schedule, now: Instant, p: Preferences, nav: (Strin
         color = colors.surface.copy(alpha = 0.65f),
     ) {
         Row(
-            Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
@@ -214,7 +214,7 @@ internal fun TimetableModeSwitch(
     Row(
         modifier
             .testTag("mode-switch")
-            .heightIn(min = 32.dp)
+            .heightIn(min = 30.dp)
             .clip(ContinuousRoundedRectangle(10.dp))
             .background(colors.surface, ContinuousRoundedRectangle(10.dp))
             .border(1.dp, colors.inactive, ContinuousRoundedRectangle(10.dp))
@@ -252,7 +252,7 @@ private fun ModeSwitchItem(
                 contentDescription = if (selected) "$label 课表，当前" else "切换到$label 课表"
             }
             .testTag(testTag)
-            .padding(horizontal = 14.dp, vertical = 5.dp),
+            .padding(horizontal = 14.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

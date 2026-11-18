@@ -146,7 +146,7 @@ class Version020UiTest {
         ui.onNodeWithText("课程", useUnmergedTree = true).performClick()
         ui.onNodeWithText("周次：第1、3、5周").assertIsDisplayed()
         screenshot("020-course-weeks.png")
-        ui.onNodeWithText("我的", useUnmergedTree = true).performClick()
+        ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("调课管理").performScrollTo().performClick()
         ui.onNodeWithText("按周次和星期").performClick()
         ui.onNodeWithTag("目标-week").performTextReplacement("2")

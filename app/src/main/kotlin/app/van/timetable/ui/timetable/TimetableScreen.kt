@@ -94,8 +94,8 @@ fun Timetable(
         else pager.weekPager.currentPage != actualWeek.coerceIn(1, s.maxWeeks) - 1
     Box(Modifier.fillMaxSize()) {
         Column(
-            Modifier.fillMaxSize().padding(horizontal = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            Modifier.fillMaxSize().padding(horizontal = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             TimetableHeader(
                 s = s,

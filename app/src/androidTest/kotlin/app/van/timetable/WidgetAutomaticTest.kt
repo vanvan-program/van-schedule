@@ -214,7 +214,7 @@ class WidgetAutomaticTest {
                 .takeScreenshot(
                     File(context.getExternalFilesDir(null), "widget-opens-timetable.png")
                 )
-            ui.onNodeWithText("我的", useUnmergedTree = true).performClick()
+            ui.onNodeWithTag("tab-2").performClick()
             instrumentation.runOnMainSync {
                 context.startActivity(
                     Intent(context, MainActivity::class.java)
