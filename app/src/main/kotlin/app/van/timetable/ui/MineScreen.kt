@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,8 +21,8 @@ import com.haooz.softglass.shape.ContinuousRoundedRectangle
 /**
  * 「设置」：分组式设置页。
  *
- * 底部第三个 Tab 从「我的」改为「设置」——这一页本来就是纯设置项，
- * 分成 课表配置 / 外观与提醒 / 数据 / 关于 四组，组内共享一张圆角卡、行间有极淡分隔线。
+ * 一级页保留全部 12 个入口，按 课表配置 / 外观与提醒 / 数据 / 关于 四组排列；
+ * 长页面的拆分放在各自的二级页里做（例如「外观设置」再分成主题、卡片、字体、动效四个三级页）。
  */
 @Composable
 fun Mine(state: VanState, nav: (String) -> Unit) {
@@ -52,7 +55,7 @@ fun Mine(state: VanState, nav: (String) -> Unit) {
             title = "外观与提醒",
             rows =
                 listOf(
-                    SettingRow("appearance", "外观设置", "主题、卡片风格、壁纸与材质"),
+                    SettingRow("appearance", "外观设置", "主题、卡片、字体与动效"),
                     SettingRow("notifications", "提醒与小米手环", "上课提醒与推送"),
                     SettingRow("band", "手环课表", "把课程表发到手表"),
                     SettingRow("widgets", "桌面小部件", "添加课表小部件"),
@@ -94,9 +97,19 @@ private fun ProfileHeader(title: String, subtitle: String) {
         shape = ContinuousRoundedRectangle(20.dp),
         color = c.surface,
     ) {
-        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).background(c.blue.copy(alpha = 0.14f), ContinuousRoundedRectangle(14.dp)))
-            Spacer(Modifier.width(14.dp))
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(40.dp).background(c.blue.copy(alpha = 0.14f), ContinuousRoundedRectangle(13.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.CalendarMonth,
+                    contentDescription = null,
+                    modifier = Modifier.size(21.dp),
+                    tint = c.blue,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontSize = 16.sp, lineHeight = 21.sp, fontWeight = FontWeight.SemiBold)
                 Text(subtitle, fontSize = 12.sp, lineHeight = 16.sp, color = c.muted)

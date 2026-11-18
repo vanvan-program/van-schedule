@@ -7,6 +7,25 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.5.16 外观设置拆成四个三级页
+
+本版版本号 `0.5.16`（`versionCode 66`）。
+
+一级设置页**保持原样的 12 个入口**（课表配置 / 外观与提醒 / 数据 / 关于 四组），收敛只发生在二级页内部：原先「外观设置」是一整页 6 个面板、十多个滑杆与开关连成的长滚动条，现在二级页只留实时预览卡和四行入口，细节分到四个三级页。
+
+| 三级页 | 路由 | 内容 |
+|---|---|---|
+| 主题与壁纸 | `appearanceTheme` | 深浅色、莫奈取色、壁纸选择 / 清除、亮度与模糊 |
+| 材质与卡片 | `appearanceCard` | 柔光玻璃 / 清透磨砂 / 无材质、顶栏渐进模糊；卡片风格、着色、不透明度、模糊、折射、圆角、对齐、文字颜色与缩放、地点与教师开关 |
+| 字体与网格 | `appearanceFont` | 全局字号、自动适配整周、节次行高 |
+| 视图与动效 | `appearanceMotion` | 显示周末 / 周次进度条 / 非本周课程、自动跳下一周、日列表分组、课间空档、文字与返回动效、自定义时间标签 |
+
+- `Appearance` 签名改为 `Appearance(p, vm, nav)`，`schedule` 只传给 `AppearanceMotionPage`（`GridTimeline::canCollapseGaps` 只在那里用）。
+- 预览卡留在二级页，壁纸位图与材质支持检测在需要的页面各自计算。
+- `VanRouteTest` 的「所有目的地」清单补上四个新路由，`key` 往返解析仍成立。
+- 三处插桩测试改为先进入对应三级页：`LocalSmokeTest`（深色 → 主题与壁纸）、`TimetableChromeTest`（周次进度条 → 视图与动效）、`Version028UiTest`（课间空档 → 视图与动效）。
+- 设置页顶部身份卡的空白方块换成日历图标，内边距 18→16/14dp。
+
 ## 0.5.15 修复「这次发布没有附带安装包」
 
 本版版本号 `0.5.15`（`versionCode 65`）。

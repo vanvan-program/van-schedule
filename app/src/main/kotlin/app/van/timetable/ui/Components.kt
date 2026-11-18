@@ -106,14 +106,17 @@ data class SettingRow(val route: String, val title: String, val description: Str
 fun SettingsGroup(title: String, rows: List<SettingRow>, onOpen: (String) -> Unit) {
     val c = LocalVan.current
     Column(Modifier.fillMaxWidth()) {
-        Text(
-            title,
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
-            fontWeight = FontWeight.Medium,
-            color = c.muted,
-            modifier = Modifier.padding(start = 8.dp, bottom = 6.dp),
-        )
+        // 二级页只有一组入口时不需要组标题，空标题就别占那 6dp。
+        if (title.isNotEmpty()) {
+            Text(
+                title,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = c.muted,
+                modifier = Modifier.padding(start = 8.dp, bottom = 6.dp),
+            )
+        }
         Surface(
             Modifier.fillMaxWidth(),
             shape = ContinuousRoundedRectangle(18.dp),

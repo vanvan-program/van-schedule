@@ -26,6 +26,11 @@ class VanRouteTest {
             VanRoute.Routines,
             VanRoute.Days,
             VanRoute.Holidays,
+            // 0.5.16 起的四个外观三级页
+            VanRoute.AppearanceTheme,
+            VanRoute.AppearanceCard,
+            VanRoute.AppearanceFont,
+            VanRoute.AppearanceMotion,
             VanRoute.Appearance,
             VanRoute.Notifications,
             VanRoute.Band,

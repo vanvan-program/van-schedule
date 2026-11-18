@@ -113,6 +113,7 @@ class Version028UiTest {
         val s = seed()
         ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("外观设置").performScrollTo().performClick()
+        ui.onNodeWithText("视图与动效").performScrollTo().performClick()
         ui.onNode(isToggleable() and hasAnyAncestor(hasTestTag("course-gap-setting")))
             .performScrollTo().performClick()
         ui.waitUntil(10000) { runBlocking { store.prefs().showCourseGaps == true } }

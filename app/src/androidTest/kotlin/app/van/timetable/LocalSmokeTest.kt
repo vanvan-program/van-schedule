@@ -103,6 +103,7 @@ class LocalSmokeTest {
         ui.onNodeWithText("搜索课程、老师、地点").assertExists()
         ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("外观设置").performClick()
+        ui.onNodeWithText("主题与壁纸").performScrollTo().performClick()
         ui.onNodeWithText("深色").performClick()
         ui.waitUntil(10000) {
             runBlocking {

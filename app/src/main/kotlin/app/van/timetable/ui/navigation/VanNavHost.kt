@@ -155,7 +155,11 @@ internal fun VanNavHost(env: VanNavHostEnv) {
         is VanRoute.Adjust ->
             active?.let { s -> SingleAdjustment(s, route.sessionId, route.date, vm, back) }
                 ?: Missing(nav)
-        VanRoute.Appearance -> Appearance(state.preferences, vm, state.active)
+        VanRoute.Appearance -> Appearance(state.preferences, vm, nav)
+        VanRoute.AppearanceTheme -> AppearanceThemePage(state.preferences, vm)
+        VanRoute.AppearanceCard -> AppearanceCardPage(state.preferences, vm)
+        VanRoute.AppearanceFont -> AppearanceFontPage(state.preferences, vm)
+        VanRoute.AppearanceMotion -> AppearanceMotionPage(state.preferences, vm, state.active)
         VanRoute.Notifications -> NotificationSettings(state.preferences, vm)
         VanRoute.Band -> BandScreen(state)
         VanRoute.Widgets -> WidgetGallery(state, vm)

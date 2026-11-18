@@ -68,6 +68,32 @@ sealed interface VanRoute {
         override val title = "作息管理"
     }
 
+    /**
+     * 「外观设置」的四个三级页。
+     *
+     * 外观设置原来是一整页 6 个面板、十多个滑杆与开关，要滚很久才找得到一项；
+     * 现在二级页只留一张预览卡和四行入口，细节收进这四页。
+     */
+    data object AppearanceTheme : VanRoute {
+        override val key = "appearanceTheme"
+        override val title = "主题与壁纸"
+    }
+
+    data object AppearanceCard : VanRoute {
+        override val key = "appearanceCard"
+        override val title = "材质与卡片"
+    }
+
+    data object AppearanceFont : VanRoute {
+        override val key = "appearanceFont"
+        override val title = "字体与网格"
+    }
+
+    data object AppearanceMotion : VanRoute {
+        override val key = "appearanceMotion"
+        override val title = "视图与动效"
+    }
+
     data object Days : VanRoute {
         override val key = "days"
         override val title = "调课管理"
@@ -199,6 +225,10 @@ fun vanRouteOf(raw: String): VanRoute {
         "newSchedule" -> VanRoute.NewSchedule
         "semester" -> VanRoute.Semester
         "routines" -> VanRoute.Routines
+        "appearanceTheme" -> VanRoute.AppearanceTheme
+        "appearanceCard" -> VanRoute.AppearanceCard
+        "appearanceFont" -> VanRoute.AppearanceFont
+        "appearanceMotion" -> VanRoute.AppearanceMotion
         "days" -> VanRoute.Days
         "holidays" -> VanRoute.Holidays
         "appearance" -> VanRoute.Appearance

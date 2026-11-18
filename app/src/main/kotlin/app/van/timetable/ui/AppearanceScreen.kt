@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 package app.van.timetable.ui
 
-import android.Manifest
-import android.app.AlarmManager
-import android.content.*
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -31,7 +25,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.van.timetable.domain.*
-import app.van.timetable.system.Scheduler
 import app.van.timetable.ui.nexio.WallpaperStore
 import app.van.timetable.ui.nexio.toCardSoftGlassStyle
 import app.van.timetable.ui.nexio.vanSoftGlassBackdrop
@@ -41,25 +34,21 @@ import com.haooz.softglass.platform.isRenderEffectSupported
 import com.haooz.softglass.shape.ContinuousRoundedRectangle
 import kotlin.math.roundToInt
 
+/**
+ * 「外观设置」（二级页）。
+ *
+ * 原来这里是 6 个面板、十多个滑杆与开关连成一长条，想改「卡片圆角」得滚很久；现在这一页
+ * 只留一张实时预览卡和四个入口，细节分别收进四个三级页：
+ * 主题与壁纸 / 材质与卡片 / 字体与网格 / 视图与动效。
+ */
 @Composable
-fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
-    val canCollapseGaps = remember(schedule) { schedule?.let(GridTimeline::canCollapseGaps) ?: false }
-    val context = LocalContext.current
+fun Appearance(p: Preferences, vm: VanViewModel, nav: (String) -> Unit) {
     val colors = LocalVan.current
     val previewBackdrop = rememberLayerBackdrop()
     var wallpaperBitmap by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
     LaunchedEffect(p.wallpaperUri) {
         wallpaperBitmap = WallpaperStore.loadImageBitmap(p.wallpaperUri, 1280)
     }
-    val pickWallpaper =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                vm.work {
-                    val savedPath = WallpaperStore.saveFromUri(context, uri)
-                    vm.store.updatePreferences { it.copy(wallpaperUri = savedPath) }
-                }
-            }
-        }
     val materialSupported = remember { isRenderEffectSupported() }
 
     Column(
@@ -185,6 +174,38 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
             }
         }
 
+        SettingsGroup(
+            title = "",
+            rows =
+                listOf(
+                    SettingRow("appearanceTheme", "主题与壁纸", "深色 / 浅色、莫奈取色、壁纸亮度与模糊"),
+                    SettingRow("appearanceCard", "材质与卡片", "玻璃材质、卡片着色、圆角与文字"),
+                    SettingRow("appearanceFont", "字体与网格", "全局字号与节次行高"),
+                    SettingRow("appearanceMotion", "视图与动效", "显示哪些内容、课间空档与动画"),
+                ),
+            onOpen = nav,
+        )
+        Muted("课程配色在编辑课程中调整。小组件支持独立设置浅色、深色、莫奈或跟随App。教务网页保留学校原色。")
+    }
+}
+
+/** 「主题与壁纸」三级页。 */
+@Composable
+fun AppearanceThemePage(p: Preferences, vm: VanViewModel) {
+    val context = LocalContext.current
+    val pickWallpaper =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                vm.work {
+                    val savedPath = WallpaperStore.saveFromUri(context, uri)
+                    vm.store.updatePreferences { it.copy(wallpaperUri = savedPath) }
+                }
+            }
+        }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         Panel {
             Text("主题模式", fontWeight = FontWeight.Medium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -204,27 +225,6 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
                     "跟随系统壁纸动态配色；关闭后恢复课程自定义颜色",
                 )
             }
-        }
-
-        Panel {
-            Text("材质与顶栏模糊", fontWeight = FontWeight.Medium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("soft" to "柔光玻璃", "frosted" to "清透磨砂", "none" to "无材质").forEach { (id, label) ->
-                    FilterChip(
-                        selected = (if (!materialSupported) "none" else p.materialLevel) == id,
-                        enabled = materialSupported || id == "none",
-                        onClick = { vm.prefs { it.copy(materialLevel = id) } },
-                        label = { Text(label) },
-                    )
-                }
-            }
-            if (!materialSupported) Muted("当前系统低于 Android 12，已自动锁定为无材质档")
-            Toggle(
-                "顶栏「真·渐进模糊」",
-                p.trueProgressiveBlur,
-                { v -> vm.prefs { it.copy(trueProgressiveBlur = v) } },
-                "Android 13+ 使用 AGSL 黄金角螺旋真渐进模糊；关闭后改为轻量模糊淡出",
-            )
         }
 
         Panel {
@@ -250,6 +250,37 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
             Slider(p.wallpaperBrightness, { v -> vm.prefs { it.copy(wallpaperBrightness = v) } }, valueRange = 0.4f..1.2f)
             Text("壁纸模糊：${p.wallpaperBlurDp.roundToInt()} dp")
             Slider(p.wallpaperBlurDp, { v -> vm.prefs { it.copy(wallpaperBlurDp = v) } }, valueRange = 0f..24f)
+        }
+    }
+}
+
+/** 「材质与卡片」三级页。 */
+@Composable
+fun AppearanceCardPage(p: Preferences, vm: VanViewModel) {
+    val materialSupported = remember { isRenderEffectSupported() }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Panel {
+            Text("材质与顶栏模糊", fontWeight = FontWeight.Medium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("soft" to "柔光玻璃", "frosted" to "清透磨砂", "none" to "无材质").forEach { (id, label) ->
+                    FilterChip(
+                        selected = (if (!materialSupported) "none" else p.materialLevel) == id,
+                        enabled = materialSupported || id == "none",
+                        onClick = { vm.prefs { it.copy(materialLevel = id) } },
+                        label = { Text(label) },
+                    )
+                }
+            }
+            if (!materialSupported) Muted("当前系统低于 Android 12，已自动锁定为无材质档")
+            Toggle(
+                "顶栏「真·渐进模糊」",
+                p.trueProgressiveBlur,
+                { v -> vm.prefs { it.copy(trueProgressiveBlur = v) } },
+                "Android 13+ 使用 AGSL 黄金角螺旋真渐进模糊；关闭后改为轻量模糊淡出",
+            )
         }
 
         Panel {
@@ -287,7 +318,16 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
             Toggle("卡片显示地点", p.showCardPlace, { v -> vm.prefs { it.copy(showCardPlace = v) } })
             Toggle("卡片显示教师", p.showCardTeacher, { v -> vm.prefs { it.copy(showCardTeacher = v) } })
         }
+    }
+}
 
+/** 「字体与网格」三级页。 */
+@Composable
+fun AppearanceFontPage(p: Preferences, vm: VanViewModel) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         Panel {
             Text("全局字体与网格尺寸", fontWeight = FontWeight.Medium)
             Text("字体大小")
@@ -311,6 +351,17 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
                 }
             }
         }
+    }
+}
+
+/** 「视图与动效」三级页。 */
+@Composable
+fun AppearanceMotionPage(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
+    val canCollapseGaps = remember(schedule) { schedule?.let(GridTimeline::canCollapseGaps) ?: false }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         Panel {
             Text("视图行为与动效", fontWeight = FontWeight.Medium)
             Toggle("显示周末", p.showWeekend, { v -> vm.prefs { it.copy(showWeekend = v) } })
@@ -351,6 +402,5 @@ fun Appearance(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
                 "在课表左侧显示自定义时间课程的时间；关闭后保留正常节次时间，不影响桌面小组件",
             )
         }
-        Muted("课程配色在编辑课程中调整。小组件支持独立设置浅色、深色、莫奈或跟随App。教务网页保留学校原色。")
     }
 }

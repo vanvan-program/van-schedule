@@ -119,6 +119,7 @@ class TimetableChromeTest {
         fun settings() {
             ui.onNodeWithContentDescription("课表菜单").performClick()
             ui.onNodeWithText("外观设置").performClick()
+            ui.onNodeWithText("视图与动效").performScrollTo().performClick()
             ui.onNodeWithTag("week-progress-setting").performScrollTo()
         }
         fun switch() = ui.onNode(isToggleable() and hasAnyAncestor(hasTestTag("week-progress-setting")))
