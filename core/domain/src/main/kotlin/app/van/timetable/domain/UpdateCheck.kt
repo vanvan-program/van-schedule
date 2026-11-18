@@ -67,7 +67,7 @@ object UpdateCheck {
             version = version,
             tag = tag,
             title = dto.name?.trim()?.takeIf { it.isNotBlank() } ?: "van课表 $version",
-            notes = htmlToText(dto.body.orEmpty()),
+            notes = releaseBodyText(dto.body),
             publishedAt = dto.publishedAt?.trim().orEmpty(),
             pageUrl = pageUrl,
             apk = pickApk(dto.assets.mapNotNull { it.toAsset() }),
@@ -240,6 +240,20 @@ object UpdateCheck {
         )
     }
 
+    /**
+     * 发布说明正文。
+     *
+     * GitHub API 的 `body` 是 **Markdown 原文**，以前直接过 [htmlToText]，`##`、`**`、表格的
+     * `|` 全都留在界面上。这里保留 Markdown，交给 [ReleaseNotes] 解析；只有正文确实是用 HTML
+     * 写的（含块级标签）才退回标签剥离。
+     */
+    private fun releaseBodyText(body: String?): String {
+        val raw = body?.trim().orEmpty()
+        if (raw.isEmpty()) return ""
+        if (HTML_BLOCK.containsMatchIn(raw)) return htmlToText(raw)
+        return ReleaseNotes.normalize(raw.replace(Regex("(?i)<br\\s*/?>"), "\n"))
+    }
+
     /** 把发布说明的 HTML 转成可显示的纯文本，标题保留为 `## 标题`，列表项以 `• ` 开头。 */
     fun htmlToText(html: String): String {
         // 发布动态里的说明是转义过的 HTML，先还原实体再处理标签，否则正文中的代码标签会留在结果里。
@@ -286,6 +300,9 @@ object UpdateCheck {
 
     private fun versionParts(version: String): List<Int>? =
         normalizeVersion(version)?.split('.')?.map(String::toInt)
+
+    /** 正文里出现块级 HTML 标签就认为是 HTML 写法，否则按 Markdown 处理。 */
+    private val HTML_BLOCK = Regex("(?i)<(p|div|ul|ol|li|h[1-6]|table|tr|td|pre|blockquote)\\b")
 }
 
 @Serializable

@@ -7,6 +7,24 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.5.17 更新说明按 Markdown 排版
+
+本版版本号 `0.5.17`（`versionCode 67`）。
+
+**症状**：点「检查版本更新」，更新说明里直接看到 `## 改了什么`、`**不降低安全性**`、`| 附件 | 大小 |` 这类原始标记，排版全乱。
+
+**根因**：GitHub API 的 `body` 是 **Markdown 原文**，而 `UpdateCheck.parseLatestReleaseJson` 以前把它交给 `htmlToText`（HTML 专用），Markdown 语法原样穿透到界面，最后整段塞进一个 `Text`。
+
+**修复**：
+
+- 新增 `core:domain` 的 `ReleaseNotes` 解析器（`ReleaseNotes.kt`）：标题、有序 / 无序列表、引用、表格、分隔线、代码围栏，行内 `**加粗**`、`` `代码` ``、`[文字](链接)`、`~~删除线~~`；解析成 `ReleaseBlock` 列表与 `InlineRun` 片段，可单测。未支持的行按普通段落显示，不丢内容。
+- 新增 `ReleaseNotesView.kt` 渲染件：标题加粗分级、列表带项目符号与序号、表格按「表头一行 + 每行一行」铺开、行内代码用等宽字体；折叠改成按段数（默认 8 段）。
+- `UpdateCheck.releaseBodyText` 区分写法：正文含块级 HTML 标签才走 `htmlToText`，否则按 Markdown 保留；`<br>` 在 Markdown 分支里转成换行。
+- 发布动态（`releases.atom`）兜底路径给的是 `htmlToText` 输出（`## 标题` + `• 项`），同一个解析器也能认，所以限流回退时排版同样正常。
+- 「发现新版本」弹窗与「关于版本」页共用同一个渲染件。
+
+**测试**：新增 7 项领域测试（`ReleaseNotesTest`），其中一项用 0.5.15 的真实发布正文回归，断言解析后的文字里不再含 `##`、`**`、`` ` ``、`|`。domain 从 133 增至 140 项。
+
 ## 0.5.16 外观设置拆成四个三级页
 
 本版版本号 `0.5.16`（`versionCode 66`）。

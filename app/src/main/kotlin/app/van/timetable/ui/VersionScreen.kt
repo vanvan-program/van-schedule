@@ -201,20 +201,8 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                             .joinToString(" · ")
                     )
                     if (release.notes.isNotBlank()) {
-                        var expanded by rememberSaveable(release.version) { mutableStateOf(false) }
-                        var overflowing by remember(release.version) { mutableStateOf(false) }
                         Text("更新说明", fontWeight = FontWeight.Medium)
-                        Text(
-                            release.notes,
-                            modifier = Modifier.testTag("version-notes"),
-                            maxLines = if (expanded) Int.MAX_VALUE else 8,
-                            overflow = TextOverflow.Ellipsis,
-                            onTextLayout = { if (!expanded) overflowing = it.hasVisualOverflow },
-                        )
-                        if (expanded || overflowing)
-                            TextButton(onClick = { expanded = !expanded }) {
-                                Text(if (expanded) "收起更新说明" else "展开全部更新说明")
-                            }
+                        ReleaseNotesView(release.notes, maxBlocks = 8, tag = "version-notes")
                     } else {
                         Muted("这条更新说明只包含版本号，请到发布页查看完整内容。")
                     }
@@ -310,7 +298,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                         Text(release.title)
                         if (release.notes.isNotBlank()) {
                             Spacer(Modifier.height(8.dp))
-                            Text(release.notes.lines().take(12).joinToString("\n"))
+                            ReleaseNotesView(release.notes, maxBlocks = 6)
                         }
                         Spacer(Modifier.height(8.dp))
                         Muted("下载后由系统弹窗确认安装，课表与设置会保留。")
