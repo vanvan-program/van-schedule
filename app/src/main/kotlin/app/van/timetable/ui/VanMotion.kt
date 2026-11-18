@@ -16,11 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,25 +92,29 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
             .dp
     BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = navMinHeight)) {
         val slot = maxWidth / items.size
+        val indicatorW = (slot - 12.dp).coerceAtLeast(40.dp)
         val indicatorX = animateDpAsState(
-            slot * tab + (slot - 50.dp) / 2,
+            slot * tab + (slot - indicatorW) / 2,
             spring(dampingRatio = 0.9f, stiffness = 550f),
             label = "tab-indicator",
         )
-        // Nexio 的底部导航是「浅色胶囊 + 选中项淡色药丸」，不是深底白字的实心色块
+        // 选中项是一整块实心主题色药丸（此前只是很淡的一层浅色，几乎看不出选中），
+        // 药丸罩住图标 + 文字整列，选中/未选中对比明显。
         Box(
             Modifier.offset { IntOffset(indicatorX.value.roundToPx(), 4.dp.roundToPx()) }
-                .size(50.dp, 26.dp)
-                .background(
-                    if (c.dark) c.blue.copy(alpha = 0.24f) else c.blue.copy(alpha = 0.14f),
-                    ContinuousRoundedRectangle(13.dp),
-                )
+                .size(indicatorW, 44.dp)
+                .background(c.blue, ContinuousRoundedRectangle(16.dp))
                 .testTag("tab-indicator")
         )
         Row(Modifier.fillMaxWidth()) {
             items.forEachIndexed { index, (label, icon) ->
+                val selected = tab == index
                 val tint by animateColorAsState(
-                    if (tab == index) c.blue else c.muted,
+                    when {
+                        selected && c.dark -> c.background
+                        selected -> Color.White
+                        else -> c.muted
+                    },
                     tween(150), label = "tab-tint",
                 )
                 Column(
@@ -128,7 +134,13 @@ internal fun VanTabBar(tab: Int, onSelect: (Int) -> Unit) {
                     Box(Modifier.padding(horizontal = 15.dp, vertical = 2.dp)) {
                         Icon(icon, null, Modifier.size(20.dp), tint = tint)
                     }
-                    Text(label, color = tint, fontSize = 11.sp, lineHeight = 14.sp)
+                    Text(
+                        label,
+                        color = tint,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
                 }
             }
         }

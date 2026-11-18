@@ -323,39 +323,45 @@ fun VanApp(
                 },
                 bottomBar = {
                     if (route == VanRoute.Home) {
-                        // 悬浮导航：与屏幕左右、底部都留出明显间距，配更强的投影，
-                        // 让它像一枚浮在内容之上的胶囊，而不是贴着底边的横条。
+                        // 悬浮导航岛：不再贴着屏幕左右与底边，而是居中收窄成一条悬浮胶囊，
+                        // 四周边距明显、投影加深，和旧版贴边横条一眼能分开。
                         val navShape = ContinuousRoundedRectangle(30.dp)
                         val navBg = c.surface
                         CompositionLocalProvider(LocalDropdownPanelDragSelect provides bottomDragSelect) {
                             Box(
-                                Modifier.navigationBarsPadding()
-                                    .padding(start = 24.dp, end = 24.dp, top = 2.dp, bottom = 10.dp)
-                                    .shadow(
-                                        elevation = 18.dp,
-                                        shape = navShape,
-                                        clip = false,
-                                        ambientColor = Color.Black.copy(alpha = 0.22f),
-                                        spotColor = Color.Black.copy(alpha = 0.28f),
-                                    )
-                                    .clip(navShape)
-                                    .then(
-                                        if (materialLevel != GlassMaterialLevel.NONE) {
-                                            Modifier.vanChromeGlass(
-                                                backdrop = mainBackdrop,
-                                                shape = navShape,
-                                                level = materialLevel,
-                                                isDark = c.dark,
-                                                fallbackColor = navBg,
-                                            )
-                                        } else {
-                                            Modifier.background(navBg, navShape)
-                                        }
-                                    )
-                                    .dropdownPanelSlidingMask(bottomDragSelect, ContinuousRoundedRectangle(20.dp))
-                                    .dropdownPanelDragSelect(bottomDragSelect, { 1f }, haptic)
+                                Modifier.fillMaxWidth()
+                                    .navigationBarsPadding()
+                                    .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 12.dp),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                VanTabBar(tab) { tab = it }
+                                Box(
+                                    Modifier.fillMaxWidth(0.84f)
+                                        .shadow(
+                                            elevation = 22.dp,
+                                            shape = navShape,
+                                            clip = false,
+                                            ambientColor = Color.Black.copy(alpha = 0.24f),
+                                            spotColor = Color.Black.copy(alpha = 0.32f),
+                                        )
+                                        .clip(navShape)
+                                        .then(
+                                            if (materialLevel != GlassMaterialLevel.NONE) {
+                                                Modifier.vanChromeGlass(
+                                                    backdrop = mainBackdrop,
+                                                    shape = navShape,
+                                                    level = materialLevel,
+                                                    isDark = c.dark,
+                                                    fallbackColor = navBg,
+                                                )
+                                            } else {
+                                                Modifier.background(navBg, navShape)
+                                            }
+                                        )
+                                        .dropdownPanelSlidingMask(bottomDragSelect, ContinuousRoundedRectangle(20.dp))
+                                        .dropdownPanelDragSelect(bottomDragSelect, { 1f }, haptic),
+                                ) {
+                                    VanTabBar(tab) { tab = it }
+                                }
                             }
                         }
                     }

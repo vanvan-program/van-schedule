@@ -205,7 +205,8 @@ class Version032UiTest {
         seed(); ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("帮助与关于").performScrollTo().performClick()
         ui.onNodeWithText("历史版本更新").performScrollTo().performClick()
-        ui.onNodeWithText("1. 【优化】“课程”页", substring = true).assertExists()
+        // 首屏最新版本的第一条：断言确实展开了最新更新记录
+        ui.onNodeWithText("1. 【调整】底部导航改成一眼能看出的悬浮岛", substring = true).assertExists()
         shot("changelog")
         val text = ui.activity.assets.open("changelog.txt").bufferedReader().use { it.readText() }
         text.split("## ").filter { it.isNotBlank() }.forEach { entry ->

@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.van.timetable.domain.*
+import com.haooz.softglass.shape.ContinuousRoundedRectangle
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -103,27 +104,34 @@ fun Courses(s: Schedule, now: Instant, nav: (String) -> Unit) {
             if (filtered.isEmpty()) item { Muted("没有符合条件的课程") }
             items(filtered, key = { it.primary.id }) { group ->
                 val c = group.primary
-                Panel(Modifier.testTag("course-group-${c.id}").clickable { nav("detail:${c.id}") }) {
-                    Row {
-                        Box(
-                            Modifier.size(12.dp)
-                                .background(
-                                    LocalVan.current.courseColor(c),
-                                    RoundedCornerShape(3.dp),
-                                )
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text(c.name, fontWeight = FontWeight.SemiBold)
-                    }
-                    if (group.members.size > 1) Muted(group.members.map { it.groupSectionLabel() }.distinct().joinToString(" · "))
-                    s.sessions
-                        .filter { n -> group.members.any { it.id == n.courseId } }
-                        .forEach { n ->
-                            if (n.date == null) Muted("周次：${formatWeeks(n.weeks)}")
-                            Muted(
-                                "${if(n.date!=null)n.date else if(n.day in 1..7)weekdays[n.day-1]else"整周"} · ${if(n.mode==TimeMode.SECTIONS)"${n.startSection}–${n.endSection}节"else if(n.mode==TimeMode.CLOCK)"${n.start}–${n.end}"else"无固定时间"} · ${n.place}"
+                // 紧凑课程卡：内边距 18→12/10、行距 10→3，卡片整体矮一截，一屏能多塞几门。
+                Surface(
+                    Modifier.fillMaxWidth().testTag("course-group-${c.id}").clickable { nav("detail:${c.id}") },
+                    shape = ContinuousRoundedRectangle(16.dp),
+                    color = LocalVan.current.surface,
+                ) {
+                    Column(
+                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(10.dp)
+                                    .background(LocalVan.current.courseColor(c), RoundedCornerShape(3.dp))
                             )
+                            Spacer(Modifier.width(8.dp))
+                            Text(c.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 19.sp)
                         }
+                        if (group.members.size > 1) Muted(group.members.map { it.groupSectionLabel() }.distinct().joinToString(" · "))
+                        s.sessions
+                            .filter { n -> group.members.any { it.id == n.courseId } }
+                            .forEach { n ->
+                                if (n.date == null) Muted("周次：${formatWeeks(n.weeks)}")
+                                Muted(
+                                    "${if(n.date!=null)n.date else if(n.day in 1..7)weekdays[n.day-1]else"整周"} · ${if(n.mode==TimeMode.SECTIONS)"${n.startSection}–${n.endSection}节"else if(n.mode==TimeMode.CLOCK)"${n.start}–${n.end}"else"无固定时间"} · ${n.place}"
+                                )
+                            }
+                    }
                 }
             }
         }
