@@ -117,8 +117,52 @@ class UpdateCheckTest {
         )
     }
 
-    @Test fun htmlToTextKeepsHeadingsListsAndDecodedCharacters() {
-        val text =
+    /**
+     * GitHub API 被限流时（未登录每小时 60 次），检查更新会退回发布动态。
+     * 发布动态不列附件，若此时 apk 为 null，界面就会误报「这次发布没有附带安装包」。
+     * 资源名是发布约定，应当按约定拼出直链，让应用内更新照常可用。
+     */
+    @Test fun atomReleaseStillCarriesConventionalApkUrl() {
+        val xml =
+            """
+            <feed><entry>
+              <content type="html">&lt;p&gt;说明&lt;/p&gt;</content>
+              <link rel="alternate" type="text/html" href="https://github.com/vanvan-program/van-schedule/releases/tag/v0.5.14"/>
+              <title>van课表 0.5.14</title>
+              <updated>2026-11-18T04:47:28Z</updated>
+            </entry></feed>
+            """.trimIndent()
+        val apk = UpdateCheck.parseAtomRelease(xml)!!.apk
+        assertNotNull(apk)
+        assertEquals("van-schedule-0.5.14-arm64.apk", apk!!.name)
+        assertEquals(
+            "https://github.com/vanvan-program/van-schedule/releases/download/v0.5.14/van-schedule-0.5.14-arm64.apk",
+            apk.url,
+        )
+        // 拿不到附件摘要与大小：留空，由下载后的签名校验兜底，不编造校验值。
+        assertNull(apk.sha256)
+        assertNull(apk.size)
+    }
+
+    @Test fun latestPageFallbackAlsoCarriesConventionalApkUrl() {
+        val apk =
+            UpdateCheck.parseLatestPageUrl(
+                "https://github.com/vanvan-program/van-schedule/releases/tag/v0.5.9"
+            )!!.apk
+        assertEquals("van-schedule-0.5.9-arm64.apk", apk?.name)
+        assertTrue(apk!!.url.endsWith("/releases/download/v0.5.9/van-schedule-0.5.9-arm64.apk"))
+    }
+
+    @Test fun conventionalApkKeepsTagButNormalizesVersion() {
+        // 标签可能是 v0.6 这种缺位写法，文件名仍按规范化版本拼，且保留标签里的 v 前缀。
+        val apk = UpdateCheck.conventionalApk("v0.6", "0.6")!!
+        assertEquals("van-schedule-0.6-arm64.apk", apk.name)
+        assertTrue(apk.url.contains("/releases/download/v0.6/"))
+        assertNull(UpdateCheck.conventionalApk("", "0.6"))
+        assertNull(UpdateCheck.conventionalApk("v0.6", "不是版本号"))
+    }
+
+    @Test fun htmlToTextKeepsHeadingsListsAndDecodedCharacters() {        val text =
             UpdateCheck.htmlToText(
                 "<h2>下载与兼容性</h2><p>手机安装 &lt;code&gt;van-schedule-0.3.3-arm64.apk&lt;/code&gt;，仅支持 ARM64。</p>" +
                     "<ul><li>包名保持一致</li><li>签名不一致时需卸载重装</li></ul>" +

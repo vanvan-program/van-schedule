@@ -7,6 +7,20 @@ Android 手机端与实验性 Xiaomi Vela 手环伴侣端。
 下载：[最新发布页](https://github.com/vanvan-program/van-schedule/releases/latest)提供手机 APK、源码及 SHA-256 校验。
 从源码构建前，请按 [SDK 依赖说明](app/libs/README.md)取得官方通信 SDK；公开源码不附原始 AAR。
 
+## 0.5.15 修复「这次发布没有附带安装包」
+
+本版版本号 `0.5.15`（`versionCode 65`）。
+
+**症状**：点「检查版本更新」→「立即更新」，提示「这次发布没有附带安装包，只能改用下面的浏览器下载」。
+
+**根因**：安装包直链只来自 GitHub API（`releases/latest`），而该接口对未登录请求限制为**每小时 60 次**。被限流后 `UpdateChecker.latestRelease` 会依次退回发布动态（`releases.atom`）和「最新发布页」跳转——这两条渠道**都不列附件**，于是 `AppRelease.apk` 为 `null`，界面就报「没有附带安装包」。实际发布里三个附件都在，是检查渠道拿不到。
+
+**修复**：`UpdateCheck.conventionalApk(tag, version)` 按发布资源命名约定（`van-schedule-<版本>-arm64.apk`）拼出直链，`parseAtomRelease` 与 `parseLatestPageUrl` 都带上它。**不降低安全性**——下载后仍强制 `UpdateInstaller.verifyFile` 里的签名证书比对，只有原签名发布、能覆盖安装的包才会被接受；摘要与大小拿不到时留空，不编造校验值。
+
+界面文案同步改：拿不到摘要时说明「下载后改用签名校验，一样安全」，只有真的拼不出直链时才说「没有附带安装包」。
+
+**测试**：新增 3 项领域测试（`atomReleaseStillCarriesConventionalApkUrl`、`latestPageFallbackAlsoCarriesConventionalApkUrl`、`conventionalApkKeepsTagButNormalizesVersion`），domain 从 130 增至 133 项。已实测 `releases/download/v0.5.13|v0.5.14/van-schedule-<版本>-arm64.apk` 均返回 200。
+
 ## 0.5.14 日/周合成一个按键、课程页只留摘要
 
 本版版本号 `0.5.14`（`versionCode 64`）。

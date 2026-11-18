@@ -271,6 +271,10 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                     }
                     if (release.apk == null) {
                         Muted("这次发布没有附带安装包，应用内更新不可用，请用浏览器下载。")
+                    } else if (release.apk?.sha256 == null) {
+                        // 走发布动态 / 跳转页兜底时拿不到附件摘要：直链按发布约定拼出，
+                        // 下载后仍强制校验签名证书，只有原签名的包才装得上。
+                        Muted("这次没能从 GitHub 读到附件的校验值（多半是被限流了），下载后会改用签名校验，一样安全。")
                     }
                     if (needsPermission) {
                         Text("需要先允许安装未知应用", fontWeight = FontWeight.Medium)

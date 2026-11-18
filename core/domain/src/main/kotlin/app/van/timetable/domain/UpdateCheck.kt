@@ -80,6 +80,28 @@ object UpdateCheck {
         return apks.firstOrNull { it.name.contains("arm64", ignoreCase = true) } ?: apks.firstOrNull()
     }
 
+    /**
+     * 按发布约定推出安装包直链，供**拿不到附件列表**的渠道使用。
+     *
+     * 只有 GitHub API 会在响应里列出附件；发布动态（releases.atom）与「最新发布页」的跳转地址
+     * 都只有版本号。而 API 对未登录请求限制为每小时 60 次，很容易被限流——此时旧版本会退回
+     * 发布动态，于是明明附了安装包，界面却说「这次发布没有附带安装包」。
+     *
+     * 发布资源名是固定约定（`van-schedule-<版本>-arm64.apk`，见发布流程），所以可以按约定拼出
+     * 直链。**这不降低安全性**：下载后仍强制校验签名证书（`UpdateInstaller.verifyFile` 里的
+     * `sameSigner`），只有原签名发布、且能覆盖安装的包才会被接受；大小与 SHA-256 拿不到时
+     * 留空，由签名校验兜底。
+     */
+    fun conventionalApk(tag: String, version: String): ApkAsset? {
+        val cleanTag = tag.trim().trimEnd('/').takeIf { it.isNotEmpty() } ?: return null
+        val cleanVersion = normalizeVersion(version) ?: return null
+        val name = "van-schedule-$cleanVersion-arm64.apk"
+        return ApkAsset(
+            name = name,
+            url = "https://github.com/$REPO/releases/download/$cleanTag/$name",
+        )
+    }
+
     /** 把 `sha256:abcd…` 形式的摘要规范化成 64 位小写十六进制；无法识别时返回 null。 */
     fun normalizeSha256(raw: String?): String? {
         val text = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -189,6 +211,8 @@ object UpdateCheck {
             notes = htmlToText(content),
             publishedAt = publishedAt,
             pageUrl = pageUrl,
+            // 发布动态不列附件，但资源名是固定约定，按约定拼出直链，别让应用内更新白废掉。
+            apk = conventionalApk(tag, version),
         )
     }
 
@@ -205,7 +229,15 @@ object UpdateCheck {
         val tag = clean.substring(index + marker.length).substringBefore('?').trimEnd('/')
         val version = normalizeVersion(tag) ?: return null
         val pageUrl = clean.substring(0, index + marker.length) + tag
-        return AppRelease(version = version, tag = tag, title = "van课表 $version", notes = "", publishedAt = "", pageUrl = pageUrl)
+        return AppRelease(
+            version = version,
+            tag = tag,
+            title = "van课表 $version",
+            notes = "",
+            publishedAt = "",
+            pageUrl = pageUrl,
+            apk = conventionalApk(tag, version),
+        )
     }
 
     /** 把发布说明的 HTML 转成可显示的纯文本，标题保留为 `## 标题`，列表项以 `• ` 开头。 */
