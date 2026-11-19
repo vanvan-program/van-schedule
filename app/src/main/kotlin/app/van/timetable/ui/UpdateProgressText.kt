@@ -16,7 +16,7 @@ internal fun updateButtonLabel(stage: UpdateInstaller.Stage?, percent: Int): Str
     when (stage) {
         null -> "准备下载…"
         is UpdateInstaller.Stage.Connecting -> "正在连接…"
-        is UpdateInstaller.Stage.Downloading -> "正在下载 $percent%"
+        is UpdateInstaller.Stage.Downloading -> if (stage.total == null) "正在下载…" else "正在下载 $percent%"
         is UpdateInstaller.Stage.Verifying -> "正在校验…"
         UpdateInstaller.Stage.Ready -> "正在安装…"
     }
@@ -26,13 +26,9 @@ internal fun updateStageHint(stage: UpdateInstaller.Stage?, percent: Int): Strin
     when (stage) {
         null -> "正在准备下载安装包…"
         is UpdateInstaller.Stage.Connecting ->
-            if (stage.viaMirror) {
-                "直连不通或太慢，正在改用加速镜像（${stage.index}/${stage.count}）…"
-            } else {
-                "正在直连 GitHub 下载安装包…"
-            }
+            "正在连接 ${stage.sourceName ?: if (stage.viaMirror) "加速镜像" else "直连 GitHub"}（${stage.index}/${stage.count}）…"
         is UpdateInstaller.Stage.Downloading -> {
-            val source = if (stage.viaMirror) "加速镜像" else "直连 GitHub"
+            val source = stage.sourceName ?: if (stage.viaMirror) "加速镜像" else "直连 GitHub"
             val total = stage.total
             if (total != null && total > 0) {
                 "已下载 ${megaBytes(stage.bytes)} / ${megaBytes(total)} · $source · $percent%"

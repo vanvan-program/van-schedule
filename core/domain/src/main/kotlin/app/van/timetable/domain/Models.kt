@@ -149,8 +149,10 @@ data class Preferences(
     val wallpaperUri: String = "",
     val wallpaperBrightness: Float = 0.92f,
     val wallpaperBlurDp: Float = 0f,
-    /** 直连 GitHub 失败或过慢时，允许改用公共加速镜像下载安装包。 */
+    /** 开启后按首选源下载，失败或持续变慢时依次换源。 */
     val useDownloadMirror: Boolean = true,
+    val preferredDownloadSource: String = UpdateCheck.DEFAULT_MIRROR,
+    val versionQuerySource: String = "auto",
 )
 
 @Serializable

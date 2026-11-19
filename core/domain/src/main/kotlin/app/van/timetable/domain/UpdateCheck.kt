@@ -47,6 +47,7 @@ data class ApkAsset(
 object UpdateCheck {
     const val REPO = "vanvan-program/van-schedule"
 
+    private val stableTag = Regex("""[vV]?\d+(?:\.\d+){0,3}""")
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
@@ -58,7 +59,8 @@ object UpdateCheck {
     fun parseLatestReleaseJson(raw: String): AppRelease? {
         val dto =
             runCatching { json.decodeFromString<ApiRelease>(raw) }.getOrNull() ?: return null
-        val tag = dto.tagName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (dto.draft || dto.prerelease) return null
+        val tag = dto.tagName?.trim()?.takeIf(stableTag::matches) ?: return null
         val version = normalizeVersion(tag) ?: return null
         val pageUrl =
             dto.htmlUrl?.trim()?.takeIf { it.isNotBlank() }
@@ -114,23 +116,20 @@ object UpdateCheck {
      * 所以即使镜像不可信，下载后仍会用 SHA-256 与签名证书把关。
      * 这些站点变动频繁，失效时按顺序跳过即可，不影响直连。
      */
-    val MIRROR_PREFIXES =
-        listOf(
-            "https://ghfast.top/",
-            "https://gh-proxy.com/",
-            "https://ghproxy.net/",
-        )
+    const val DEFAULT_MIRROR = "gh-proxy.com"
+    const val GITHUB = "GitHub"
+    val downloadSourceNames = listOf(DEFAULT_MIRROR, "ghfast.top", GITHUB, "ghproxy.net")
 
-    /**
-     * 下载地址列表：第一个永远是 GitHub 原始地址，后面是按序尝试的镜像。
-     * [useMirror] 为 false 时只返回原始地址（例如用户在设置里关掉了国内加速）。
-     */
-    fun downloadSources(originalUrl: String, useMirror: Boolean): List<String> {
+    fun downloadSources(originalUrl: String, useMirror: Boolean, preferred: String = DEFAULT_MIRROR): List<String> {
         val clean = originalUrl.trim()
         if (clean.isEmpty()) return emptyList()
         if (!useMirror) return listOf(clean)
-        return (listOf(clean) + MIRROR_PREFIXES.map { it + clean }).distinct()
+        val first = preferred.takeIf { it in downloadSourceNames } ?: DEFAULT_MIRROR
+        return (listOf(first) + downloadSourceNames).distinct().map { host ->
+            if (host == GITHUB) clean else "https://$host/$clean"
+        }
     }
+
     /**
      * 把发布标签或版本号文本规范成可比较的点分数字，例如 `v0.3.3` 转成 `0.3.3`。
      * 无法识别时返回 null，调用方按“没有拿到版本号”处理，不要猜测。
@@ -163,16 +162,15 @@ object UpdateCheck {
     }
 
     /**
-     * 解析 GitHub 的发布动态（releases.atom），取第一条即最新发布。
+     * 解析 GitHub 的发布动态（releases.atom），取第一条使用正式版本号的发布。
      * 发布动态不需要登录，也没有 API 的按小时限流。
      */
-    fun parseAtomRelease(xml: String): AppRelease? {
-        val entry =
-            Regex("<entry>(.*?)</entry>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-                .find(xml)
-                ?.groupValues
-                ?.get(1)
-                ?: return null
+    fun parseAtomRelease(xml: String): AppRelease? =
+        Regex("<entry>(.*?)</entry>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+            .findAll(xml)
+            .firstNotNullOfOrNull { parseAtomEntry(it.groupValues[1]) }
+
+    private fun parseAtomEntry(entry: String): AppRelease? {
         // 只认发布动态里的 <link> 标签，避免更新说明正文里出现其他 releases/tag 链接时误判。
         val pageUrl =
             Regex("<link[^>]*href=\"([^\"]*/releases/tag/[^\"]+)\"")
@@ -182,6 +180,7 @@ object UpdateCheck {
                 ?: return null
         val tag =
             pageUrl.substringAfterLast("/tag/").substringBefore('?').substringBefore('#').trimEnd('/')
+        if (!stableTag.matches(tag)) return null
         val version = normalizeVersion(tag) ?: return null
         val title =
             Regex("<title>(.*?)</title>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
@@ -227,6 +226,7 @@ object UpdateCheck {
         val index = clean.indexOf(marker)
         if (index < 0) return null
         val tag = clean.substring(index + marker.length).substringBefore('?').trimEnd('/')
+        if (!stableTag.matches(tag)) return null
         val version = normalizeVersion(tag) ?: return null
         val pageUrl = clean.substring(0, index + marker.length) + tag
         return AppRelease(
@@ -307,6 +307,8 @@ object UpdateCheck {
 
 @Serializable
 private data class ApiRelease(
+    val draft: Boolean = false,
+    val prerelease: Boolean = false,
     @SerialName("tag_name") val tagName: String? = null,
     val name: String? = null,
     val body: String? = null,

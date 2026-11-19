@@ -42,10 +42,10 @@ object UpdateChecker {
      * 检查最新版本。[currentVersion] 是本机 versionName，仅在本地比较，不会发送。
      * 必须在后台线程调用，函数内部会阻塞等待网络。
      */
-    fun check(currentVersion: String): Result {
+    fun check(currentVersion: String, querySource: String = "auto"): Result {
         val release =
             try {
-                latestRelease(currentVersion)
+                latestRelease(currentVersion, querySource)
             } catch (e: InterruptedException) {
                 throw e
             } catch (e: Exception) {
@@ -55,38 +55,42 @@ object UpdateChecker {
         else Result.UpToDate(release.version)
     }
 
-    private fun latestRelease(currentVersion: String): AppRelease {
-        // 先问 GitHub API：只有这里能拿到安装包直链与 SHA-256，应用内更新要用。
-        // 未登录时每小时有次数上限，超了就退回发布动态。
-        try {
-            val json = request(API_LATEST_URL, "application/vnd.github+json", currentVersion)
-            UpdateCheck.parseLatestReleaseJson(json)?.let { return it }
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
-            // 继续走下面的公开渠道，不把这一次失败直接抛给用户。
+    internal fun latestRelease(
+        currentVersion: String,
+        querySource: String,
+        read: (String, String, String) -> String = ::request,
+        latestPage: (String) -> String = ::followLatestPage,
+    ): AppRelease {
+        val mirrorApi = "https://${UpdateCheck.DEFAULT_MIRROR}/$API_LATEST_URL"
+        val urls = when (querySource) {
+            UpdateCheck.GITHUB -> listOf(API_LATEST_URL)
+            UpdateCheck.DEFAULT_MIRROR -> listOf(mirrorApi, API_LATEST_URL)
+            else -> listOf(API_LATEST_URL, mirrorApi)
         }
-        var feedError: Exception? = null
-        // 发布动态不需要授权，也没有 GitHub API 的按小时限流，优先使用。
-        try {
-            val xml = request(FEED_URL, "application/atom+xml", currentVersion)
-            UpdateCheck.parseAtomRelease(xml)?.let { return it }
-            feedError = IOException("发布动态中没有可用的版本号")
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
-            feedError = e
+        var lastError: IOException? = null
+        for (url in urls) {
+            try {
+                val release = UpdateCheck.parseLatestReleaseJson(read(url, "application/vnd.github+json", currentVersion)) ?: continue
+                if (url == mirrorApi) {
+                    // Only follow this repository's canonical links from mirrored metadata.
+                    if (release.pageUrl != "$RELEASES_URL/tag/${release.tag}") continue
+                    val asset = release.apk ?: continue
+                    if (!asset.name.matches(Regex("""[A-Za-z0-9._-]+\.apk""", RegexOption.IGNORE_CASE)) ||
+                        asset.url != "$RELEASES_URL/download/${release.tag}/${asset.name}") continue
+                }
+                return release
+            } catch (e: IOException) {
+                lastError = e
+            }
         }
-        // 发布动态不可解析时，用“最新发布页”的跳转地址兜底，只能拿到版本号和下载页。
+        // Prefer the designated Latest release over the first item in publication order.
         try {
-            val finalUrl = followLatestPage(currentVersion)
-            UpdateCheck.parseLatestPageUrl(finalUrl)?.let { return it }
-        } catch (e: InterruptedException) {
-            throw e
-        } catch (e: Exception) {
-            throw feedError ?: e
+            UpdateCheck.parseLatestPageUrl(latestPage(currentVersion))?.let { return it }
+        } catch (e: IOException) {
+            lastError = e
         }
-        throw feedError ?: IOException("无法确定最新版本")
+        val feed = read(FEED_URL, "application/atom+xml", currentVersion)
+        return UpdateCheck.parseAtomRelease(feed) ?: throw lastError ?: IOException("无法确定最新正式版")
     }
 
     private fun request(url: String, accept: String, currentVersion: String): String {
@@ -95,8 +99,14 @@ object UpdateChecker {
             val code = connection.responseCode
             if (code !in 200..299) throw IOException(statusMessage(code))
             return connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
-                val body = reader.readText()
-                if (body.length > MAX_BODY_CHARS) body.take(MAX_BODY_CHARS) else body
+                val buffer = CharArray(8192)
+                val body = StringBuilder()
+                while (body.length < MAX_BODY_CHARS) {
+                    val count = reader.read(buffer, 0, minOf(buffer.size, MAX_BODY_CHARS - body.length))
+                    if (count < 0) break
+                    body.append(buffer, 0, count)
+                }
+                body.toString()
             }
         } finally {
             connection.disconnect()

@@ -13,7 +13,6 @@ import app.van.timetable.domain.ApkAsset
 import app.van.timetable.domain.UpdateCheck
 import java.io.File
 import java.net.ConnectException
-import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
@@ -31,8 +30,6 @@ import javax.net.ssl.SSLException
  * 2. 安装包签名证书必须与本机已安装版本完全一致，否则删除并拒绝安装。
  */
 object UpdateInstaller {
-    private const val CONNECT_TIMEOUT_MS = 8_000
-    private const val READ_TIMEOUT_MS = 30_000
 
     sealed interface Download {
         /** [viaMirror] 表示这份安装包是从公共加速镜像取到的，不是 GitHub 直连。 */
@@ -47,10 +44,10 @@ object UpdateInstaller {
      */
     sealed interface Stage {
         /** 正在连接某个下载地址。[index] 从 1 开始，[count] 是本次可用的地址总数。 */
-        data class Connecting(val viaMirror: Boolean, val index: Int, val count: Int) : Stage
+        data class Connecting(val viaMirror: Boolean, val index: Int, val count: Int, val sourceName: String? = null) : Stage
 
         /** 正在下载。[bytes] 已收字节数，[total] 是总字节数（服务器没给长度时为 null）。 */
-        data class Downloading(val viaMirror: Boolean, val bytes: Long, val total: Long?) : Stage
+        data class Downloading(val viaMirror: Boolean, val bytes: Long, val total: Long?, val sourceName: String? = null) : Stage
 
         /** 下载完成，正在校验大小、SHA-256 与签名。 */
         data class Verifying(val viaMirror: Boolean) : Stage
@@ -89,157 +86,75 @@ object UpdateInstaller {
      * 已存在且校验通过的缓存文件会直接复用，避免重复下载十几兆。
      *
      * 国内直连 GitHub 常常很慢，所以按 [UpdateCheck.downloadSources] 的顺序换源：
-     * 先直连，失败或明显卡住再依次换成公共镜像。无论从哪下载，最后都要过摘要与签名校验。
+     * 先尝试用户选择的下载源，再依次尝试其余地址。无论从哪下载，最后都要过摘要与签名校验。
      */
     fun download(
         context: Context,
         asset: ApkAsset,
         version: String,
         useMirror: Boolean = true,
+        preferredSource: String = UpdateCheck.DEFAULT_MIRROR,
         onProgress: (Int) -> Unit = {},
         onStage: (Stage) -> Unit = {},
     ): Download {
         val target = cachedFile(context, version)
-        if (target.isFile && verifyFile(context, target, asset)) {
+        if (target.isFile && verifyFile(context, target, asset) && matchesRelease(context, target, version)) {
             onProgress(100)
             onStage(Stage.Ready)
             return Download.Ready(target)
         }
-        target.delete()
-        val sources = UpdateCheck.downloadSources(asset.url, useMirror)
+        val sources = UpdateCheck.downloadSources(asset.url, useMirror, preferredSource)
         if (sources.isEmpty()) return Download.Failed("没有可用的下载地址")
-        var lastMessage: String? = null
-        sources.forEachIndexed { index, source ->
-            val viaMirror = index > 0
-            onProgress(0)
-            onStage(Stage.Connecting(viaMirror = viaMirror, index = index + 1, count = sources.size))
-            val hasNext = index < sources.lastIndex
-            val result =
-                attempt(context, source, asset, version, target, hasNext, onProgress, onStage, viaMirror)
-            when (result) {
-                is Download.Ready -> {
-                    onStage(Stage.Ready)
-                    return Download.Ready(result.file, viaMirror = viaMirror)
-                }
-                is Download.Failed -> lastMessage = result.message
-            }
+        val partial = try {
+            File.createTempFile("update-", ".apk", target.parentFile)
+        } catch (e: java.io.IOException) {
+            return Download.Failed("无法创建下载文件，请检查存储空间")
         }
-        return Download.Failed(lastMessage ?: "下载失败，请稍后重试")
+        var failure = "下载失败，请稍后重试"
+        try {
+            for ((index, source) in sources.withIndex()) {
+                val mirror = source != asset.url.trim()
+                val host = if (mirror) URL(source).host else "直连 GitHub"
+                try {
+                    onStage(Stage.Connecting(mirror, index + 1, sources.size, host))
+                    var appended: Boolean
+                    do {
+                        var lastPercent = -1
+                        var lastBytes = -262144L
+                        appended = transferApk(source, asset, version, partial, index < sources.lastIndex) { bytes, total ->
+                            val percent = if (total != null) (bytes * 100 / total).toInt().coerceIn(0, 100) else 0
+                            if (percent != lastPercent || (total == null && bytes - lastBytes >= 262144)) {
+                                onProgress(percent)
+                                onStage(Stage.Downloading(mirror, bytes, total, host))
+                                lastPercent = percent
+                                lastBytes = bytes
+                            }
+                        }
+                        onStage(Stage.Verifying(mirror))
+                        if (verifyFile(context, partial, asset) && matchesRelease(context, partial, version)) {
+                            if (!partial.renameTo(target)) return Download.Failed("无法保存安装包，请检查存储空间")
+                            onProgress(100)
+                            onStage(Stage.Ready)
+                            return Download.Ready(target, mirror)
+                        }
+                        // A bad prefix from the previous source must not spoil a good mirror.
+                        if (!partial.delete()) return Download.Failed("无法清理下载缓存")
+                        failure = "安装包的校验值、签名或版本不符，请重试"
+                    } while (appended)
+                } catch (e: Exception) {
+                    if (e is InterruptedException) throw e
+                    failure = describeDownloadError(e)
+                }
+            }
+            return Download.Failed(failure)
+        } finally {
+            partial.delete()
+        }
     }
 
-    /** 下载速度太慢、准备换源时抛出，用来中断当前连接。 */
-    private class SlowSourceException : Exception("这个地址太慢")
-
-    /** 单源下载超过这个时间且平均速度低于 [SLOW_KBPS] 就换源（仅当还有备用地址时）。 */
-    private const val SLOW_CHECK_AFTER_MS = 8_000L
-    private const val SLOW_KBPS = 60.0
-
-    /** 服务器没给内容长度时，每收到这么多字节刷新一次进度提示。 */
-    private const val DOWNLOAD_STAGE_STEP = 256 * 1024L
-
-    /** 从单个地址下载并校验；失败时清理半成品，返回可直接展示的原因。 */
-    private fun attempt(
-        context: Context,
-        source: String,
-        asset: ApkAsset,
-        version: String,
-        target: File,
-        allowSlowFallback: Boolean,
-        onProgress: (Int) -> Unit,
-        onStage: (Stage) -> Unit,
-        viaMirror: Boolean,
-    ): Download {
-        val temp = File(target.parentFile, "${target.name}.part")
-        temp.delete()
-        var connection: HttpURLConnection? = null
-        try {
-            connection = (URL(source).openConnection() as HttpURLConnection).apply {
-                connectTimeout = CONNECT_TIMEOUT_MS
-                readTimeout = READ_TIMEOUT_MS
-                instanceFollowRedirects = true
-                requestMethod = "GET"
-                useCaches = false
-                setRequestProperty("Accept", "application/octet-stream")
-                setRequestProperty("User-Agent", "van-timetable/$version")
-            }
-            val code = connection.responseCode
-            if (code !in 200..299) return Download.Failed(downloadStatusMessage(code))
-            val total = connection.contentLengthLong.takeIf { it > 0 } ?: asset.size ?: -1L
-            val digest = MessageDigest.getInstance("SHA-256")
-            var written = 0L
-            var lastPercent = -1
-            var lastStageBytes = 0L
-            val startedAt = System.currentTimeMillis()
-            connection.inputStream.use { input ->
-                temp.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        digest.update(buffer, 0, read)
-                        written += read
-                        if (total > 0) {
-                            val percent = (written * 100 / total).toInt().coerceIn(0, 100)
-                            if (percent != lastPercent) {
-                                lastPercent = percent
-                                onProgress(percent)
-                                onStage(Stage.Downloading(viaMirror, written, total))
-                            }
-                        } else if (written - lastStageBytes >= DOWNLOAD_STAGE_STEP) {
-                            // 服务器没给长度：按字节数节流，让界面至少能看到「已收多少」在动。
-                            lastStageBytes = written
-                            onStage(Stage.Downloading(viaMirror, written, null))
-                        }
-                        if (allowSlowFallback) {
-                            val elapsed = System.currentTimeMillis() - startedAt
-                            if (elapsed >= SLOW_CHECK_AFTER_MS && written * 100 / total.coerceAtLeast(1) < 30) {
-                                val kbps = written / 1024.0 / (elapsed / 1000.0)
-                                if (kbps < SLOW_KBPS) throw SlowSourceException()
-                            }
-                        }
-                    }
-                }
-            }
-            if (written <= 0L) {
-                temp.delete()
-                return Download.Failed("下载到的安装包是空的，请稍后重试")
-            }
-            onStage(Stage.Verifying(viaMirror))
-            if (asset.sha256 != null) {
-                val actual = digest.digest().joinToString("") { "%02x".format(it) }
-                if (!actual.equals(asset.sha256, ignoreCase = true)) {
-                    temp.delete()
-                    return Download.Failed("安装包校验失败（SHA-256 不一致），已丢弃，请重试")
-                }
-            }
-            val expectedSize = asset.size
-            if (expectedSize != null && expectedSize > 0 && written != expectedSize) {
-                temp.delete()
-                return Download.Failed("安装包不完整（应为 $expectedSize 字节，实收 $written 字节），已丢弃")
-            }
-            if (!temp.renameTo(target)) {
-                temp.delete()
-                return Download.Failed("无法保存安装包，请检查存储空间后重试")
-            }
-            if (!sameSigner(context, target)) {
-                target.delete()
-                return Download.Failed("安装包签名与本机版本不一致，已停止安装")
-            }
-            onProgress(100)
-            return Download.Ready(target)
-        } catch (e: InterruptedException) {
-            temp.delete()
-            throw e
-        } catch (e: SlowSourceException) {
-            temp.delete()
-            return Download.Failed("这个下载地址太慢，已换下一个")
-        } catch (e: Exception) {
-            temp.delete()
-            return Download.Failed(describeDownloadError(e))
-        } finally {
-            connection?.disconnect()
-        }
+    private fun matchesRelease(context: Context, apk: File, version: String): Boolean {
+        val info = context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0) ?: return false
+        return info.packageName == context.packageName && info.versionName == version
     }
 
     /**
@@ -303,14 +218,6 @@ object UpdateInstaller {
             info.signingInfo?.apkContentsSigners?.firstOrNull()?.toByteArray()
         } else {
             @Suppress("DEPRECATION") info.signatures?.firstOrNull()?.toByteArray()
-        }
-
-    private fun downloadStatusMessage(code: Int): String =
-        when (code) {
-            404 -> "发布页上没有这个安装包，可能已被替换，请到发布页手动下载"
-            403, 429 -> "下载被 GitHub 限流了，请稍后再试"
-            in 500..599 -> "GitHub 服务暂时不可用（HTTP $code）"
-            else -> "下载失败：HTTP $code"
         }
 
     private fun describeDownloadError(error: Throwable): String =

@@ -32,6 +32,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@Composable
+private fun SourcePicker(label: String, selected: String, options: Map<String, String>, select: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }) {
+            Text("$label · ${options[selected] ?: options.values.first()} ▾")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { (key, name) ->
+                DropdownMenuItem(text = { Text(name) }, onClick = {
+                    expanded = false
+                    select(key)
+                })
+            }
+        }
+    }
+}
+
 /** 关于版本：显示本机版本信息，并在用户点击时联网检查 GitHub 发布页的最新版本。 */
 @Composable
 fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
@@ -71,6 +89,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                         asset = asset,
                         version = release.version,
                         useMirror = p.useDownloadMirror,
+                        preferredSource = p.preferredDownloadSource,
                         onProgress = { percent ->
                             scope.launch(Dispatchers.Main) {
                                 (download as? DownloadUi.Busy)?.let { download = it.copy(percent = percent) }
@@ -115,7 +134,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
         state = UpdateState.Checking
         openFailed = false
         scope.launch {
-            val result = withContext(Dispatchers.IO) { UpdateChecker.check(info.name) }
+            val result = withContext(Dispatchers.IO) { UpdateChecker.check(info.name, p.versionQuerySource) }
             val checkedAt = LocalTime.now().format(clock)
             state =
                 when (result) {
@@ -146,8 +165,20 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                 "国内加速下载",
                 p.useDownloadMirror,
                 { enabled -> vm.prefs { it.copy(useDownloadMirror = enabled) } },
-                "直连 GitHub 失败或太慢时，依次改用公共加速镜像；安装包仍会校验 SHA-256 与签名，镜像无法篡改内容。",
+                "开启后优先使用所选下载源，连接失败或持续过慢时自动换源。关闭后仅从 GitHub 下载。",
             )
+            if (p.useDownloadMirror) {
+                SourcePicker(
+                    "首选下载源",
+                    p.preferredDownloadSource,
+                    UpdateCheck.downloadSourceNames.associateWith { it },
+                ) { name -> vm.prefs { it.copy(preferredDownloadSource = name) } }
+            }
+            SourcePicker(
+                "版本查询源",
+                p.versionQuerySource,
+                mapOf("auto" to "GitHub 优先，镜像备用", UpdateCheck.DEFAULT_MIRROR to "gh-proxy.com 优先", UpdateCheck.GITHUB to "仅 GitHub"),
+            ) { name -> vm.prefs { it.copy(versionQuerySource = name) } }
             Button(
                 onClick = { check() },
                 enabled = state !is UpdateState.Checking,
@@ -231,7 +262,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                     }
                     if (busy != null) {
                         val stage = busy.stage
-                        if (stage is UpdateInstaller.Stage.Downloading) {
+                        if (stage is UpdateInstaller.Stage.Downloading && stage.total != null) {
                             LinearProgressIndicator(
                                 progress = { busy.percent / 100f },
                                 modifier = Modifier.fillMaxWidth().testTag("update-progress"),
@@ -262,7 +293,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                     } else if (release.apk?.sha256 == null) {
                         // 走发布动态 / 跳转页兜底时拿不到附件摘要：直链按发布约定拼出，
                         // 下载后仍强制校验签名证书，只有原签名的包才装得上。
-                        Muted("这次没能从 GitHub 读到附件的校验值（多半是被限流了），下载后会改用签名校验，一样安全。")
+                        Muted("当前查询源没有提供 SHA-256。下载后会核对包名、版本和签名。")
                     }
                     if (needsPermission) {
                         Text("需要先允许安装未知应用", fontWeight = FontWeight.Medium)
