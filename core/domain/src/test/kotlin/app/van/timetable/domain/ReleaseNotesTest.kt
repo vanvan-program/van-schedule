@@ -95,6 +95,11 @@ class ReleaseNotesTest {
         assertEquals("val a = 1", code.text)
     }
 
+    @Test fun nestedBulletsKeepIndentation() {
+        val blocks = ReleaseNotes.parse("- parent\n  - child\n    - grandchild\n- next")
+        assertEquals(listOf(0, 1, 2, 0), blocks.filterIsInstance<ReleaseBlock.Bullet>().map { it.depth })
+    }
+
     @Test fun linksKeepTheirText() {
         val runs = ReleaseNotes.inline("见 [发布页](https://example.com/x) 说明")
         assertEquals("见 发布页 说明", runs.joinToString("") { it.text })

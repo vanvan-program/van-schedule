@@ -30,8 +30,8 @@ android {
         applicationId 'app.van.timetable'
         minSdk 26
         targetSdk 37
-        versionCode 67
-        versionName '0.5.17'
+        versionCode 68
+        versionName '0.5.18'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     buildFeatures { compose true }

@@ -102,16 +102,18 @@ class TimetableLayoutTest {
         showGrid(prefs)
         val expandedRow = rowHeightPx()
         // 横带没了，但空档高度仍按时长分配：先确认长空档确实把课程行推开了。
-        val lunch = ui.onNodeWithTag("section-5").fetchSemanticsNode().boundsInRoot
-        val first = ui.onNodeWithTag("section-1").fetchSemanticsNode().boundsInRoot
-        assertTrue("午休空档应当把第 5 节推到第 1 节下方", lunch.top > first.bottom)
+        fun lunchGap(): Float {
+            val morning = ui.onNodeWithTag("section-4").fetchSemanticsNode().boundsInRoot
+            val afternoon = ui.onNodeWithTag("section-5").fetchSemanticsNode().boundsInRoot
+            return afternoon.top - morning.bottom
+        }
+        assertTrue("展开时保留午休空档", lunchGap() > 1f)
         assertTrue("课程行不应被空档压扁", expandedRow / density >= 38f)
 
         prefs.value = prefs.value.copy(showCourseGaps = false)
         ui.waitForIdle()
         ui.onAllNodesWithText("午休").assertCountEquals(0)
-        val compactRow = rowHeightPx()
-        assertTrue("收起空档后课程行应当更高", compactRow > expandedRow)
+        assertEquals("紧凑时第 4、5 节应直接相邻", 0f, lunchGap(), 1f)
         shot("layout-no-bands-compact.png")
     }
 

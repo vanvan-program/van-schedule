@@ -50,9 +50,9 @@ object ReleaseNotes {
             .replace("\r\n", "\n")
             .replace('\r', '\n')
             .split('\n')
-            .joinToString("\n") { it.replace(Regex("[ \\t\\u00A0]+"), " ").trimEnd() }
+            .joinToString("\n") { it.trimEnd() }
             .replace(Regex("\n{3,}"), "\n\n")
-            .trim()
+            .trim('\n')
 
     fun parse(raw: String): List<ReleaseBlock> {
         val lines = normalize(raw).split('\n')
@@ -97,7 +97,7 @@ object ReleaseNotes {
                 }
 
                 BULLET.matches(trimmed) -> {
-                    val depth = (lines[i].takeWhile { it == ' ' || it == '\t' }.length / 2).coerceIn(0, 4)
+                    val depth = (lines[i].takeWhile { it == ' ' || it == '\t' }.replace("\t", "    ").length / 2).coerceIn(0, 4)
                     blocks += ReleaseBlock.Bullet(depth, inline(trimmed.drop(1).trim()))
                     i++
                 }

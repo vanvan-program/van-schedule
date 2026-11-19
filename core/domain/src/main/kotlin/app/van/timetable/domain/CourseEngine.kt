@@ -457,9 +457,14 @@ object CourseEngine {
                     .mapNotNull { it.targetDate?.let(LocalDate::parse) }
                     .maxOrNull() ?: date,
             )
-        var d = date
-        while (d <= last) {
-            val zone = ZoneId.of(schedule.zone)
+        val laterMakeupDates = (schedule.dayOverrides + globalDayOverrides)
+            .asSequence().filter { !it.cancelled && it.sourceDate != null }
+            .map { LocalDate.parse(it.date) }
+            .filter { it > last && it >= date }
+            .distinct().sorted()
+        val regularDates = generateSequence(date) { it.plusDays(1) }.takeWhile { it <= last }
+        val zone = ZoneId.of(schedule.zone)
+        for (d in regularDates + laterMakeupDates) {
             val available =
                 resolveDay(schedule, d, globalDayOverrides).filter { it.endsAt(zone) > now }
             val ongoing = available.filter { it.startsAt(zone) <= now }
@@ -469,7 +474,6 @@ object CourseEngine {
                     .firstOrNull { group -> group.any { it.id == first.id } }
                     ?.let(::main) ?: first
             }
-            d = d.plusDays(1)
         }
         return null
     }

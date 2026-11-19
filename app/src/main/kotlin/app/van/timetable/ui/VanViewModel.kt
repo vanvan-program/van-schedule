@@ -12,6 +12,8 @@ import app.van.timetable.system.DocumentSource
 import app.van.timetable.system.Scheduler
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class VanState(
     val schedules: List<Schedule> = emptyList(),
@@ -46,18 +48,27 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
     val documentDrafts = mutableMapOf<String, MutableState<List<DocumentCourseRow>>>()
     val importProgress = MutableStateFlow("")
 
+    private val writeMutex = Mutex()
+
     fun work(block: suspend () -> Unit) {
-        if (busy.value) return
-        busy.value = true
+        if (!busy.value) submitWrite(block)
+    }
+
+    private fun submitWrite(block: suspend () -> Unit) {
         viewModelScope.launch {
-            try {
-                withContext(Dispatchers.IO) { block() }
-                withContext(Dispatchers.IO) { Scheduler.reconcile(getApplication()) }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                messages.emit(e.message ?: "操作失败，请重试")
-            } finally {
-                busy.value = false
+            writeMutex.withLock {
+                busy.value = true
+                try {
+                    withContext(Dispatchers.IO) {
+                        block()
+                        Scheduler.reconcile(getApplication())
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    messages.emit(e.message ?: "操作失败，请重试")
+                } finally {
+                    busy.value = false
+                }
             }
         }
     }
@@ -68,7 +79,7 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
         withContext(Dispatchers.Main) { after() }
     }
 
-    fun prefs(transform: (Preferences) -> Preferences) = work { store.updatePreferences(transform) }
+    fun prefs(transform: (Preferences) -> Preferences) = submitWrite { store.updatePreferences(transform) }
 
     fun delete(id: String) = work { store.delete(id) }
 

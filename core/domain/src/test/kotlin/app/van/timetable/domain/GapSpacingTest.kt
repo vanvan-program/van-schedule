@@ -105,6 +105,19 @@ class GapSpacingTest {
     }
 
     @Test
+    fun compactMixedWeekKeepsSectionRowsAdjacentAndLunchOnlyWhenNeeded() {
+        fun time(hour: Int, minute: Int) = LocalTime.of(hour, minute)
+        val mixed = listOf(time(10, 20) to time(12, 0), time(14, 0) to time(16, 0))
+        val grid = GridTimeline.compact(elevenSections, mixed)
+        assertEquals(11f, grid.units, 0.001f)
+        assertTrue(grid.position(time(12, 0)) - grid.position(time(10, 20)) > 1f)
+        val lunch = time(12, 30) to time(13, 15)
+        val withLunch = GridTimeline.compact(elevenSections, mixed + lunch)
+        assertEquals(1, withLunch.bands.count { it.section == null })
+        assertNotNull(withLunch.gapContaining(lunch.first, lunch.second))
+    }
+
+    @Test
     fun `compact axis removes every gap`() {
         val timeline = GridTimeline.create(elevenSections, 0f, gapUnitsByMinutes(compact = true), emptyList(), edgeGapUnits = 0f)
         assertEquals(0f, timeline.units - timeline.bands.count { it.section != null }, 0.001f)

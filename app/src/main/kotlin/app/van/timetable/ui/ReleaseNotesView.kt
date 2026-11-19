@@ -59,9 +59,9 @@ fun ReleaseNotesView(
                     )
 
                 is ReleaseBlock.Bullet ->
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(start = (block.depth * 12).dp)) {
                         Text("•", fontSize = 12.sp, lineHeight = 18.sp, color = c.muted)
-                        Spacer(Modifier.width(6.dp + (block.depth * 12).dp))
+                        Spacer(Modifier.width(6.dp))
                         Text(block.runs.toAnnotated(), fontSize = 12.sp, lineHeight = 18.sp)
                     }
 

@@ -169,7 +169,7 @@ internal fun WeekGrid(
     val data = remember(s, monday, days, p.showInactive, p.globalDayOverrides) {
         weekData(s, monday, days, p.showInactive, p.globalDayOverrides)
     }
-    val compactAxis = canCollapseGaps && p.showCourseGaps != true
+    val compactAxis = p.showCourseGaps?.not() ?: canCollapseGaps
     val textMeasurer = rememberTextMeasurer()
     val numberStyle = LocalTextStyle.current.copy(fontSize = 14.sp, lineHeight = 17.sp)
     val timeStyle = LocalTextStyle.current.copy(fontSize = 10.sp, lineHeight = 12.sp)
@@ -207,27 +207,23 @@ internal fun WeekGrid(
         val headerHeight = maxOf(40.dp, (34f * scale).dp)
         // 空档高度按时长分配：短课间留一条细缝，午休/晚休才占整块。
         // 以前每个空档都固定 24dp（含凌晨与深夜两端的空档），一屏十几个空档把课程行压得很扁。
-        val gapUnits = if (compactAxis) 0f else ExpandedGapUnits
         val gapUnitsByMinutes: (Long) -> Float = { minutes ->
-            if (compactAxis) 0f
-            else if (minutes >= 20L) (ExpandedGapUnits * minutes / 60f).coerceIn(0.2f, 0.9f)
+            if (minutes >= 20L) (ExpandedGapUnits * minutes / 60f).coerceIn(0.2f, 0.9f)
             else ShortGapUnits
         }
         val occupied = remember(data) {
             data.flatMap { day -> day.entries.map { it.occurrence.start to it.occurrence.end } }.distinct()
         }
         val timeline = remember(sections, compactAxis, occupied) {
-            GridTimeline.create(
-                sections,
-                gapUnits,
-                gapUnitsByMinutes,
-                occupied,
-                edgeGapUnits = if (compactAxis) 0f else ShortGapUnits,
-            )
+            if (compactAxis) GridTimeline.compact(sections, occupied)
+            else GridTimeline.create(sections, ExpandedGapUnits, gapUnitsByMinutes, occupied, edgeGapUnits = ShortGapUnits)
         }
         val totalUnits = timeline.units.coerceAtLeast(1f)
         val fitted = (maxHeight - headerHeight - 8.dp) / totalUnits
-        val minimumRowHeight = maxOf((36f * scale).dp, labelHeight + 4.dp)
+        // Keep three aligned labels even in the 11- and 13-section routines.
+        val labelScale = if (p.fitWeek && compactAxis)
+            ((fitted - 4.dp) / labelHeight).coerceIn(0.8f, 1f) else 1f
+        val minimumRowHeight = maxOf((36f * scale).dp, labelHeight * labelScale + 4.dp)
         val preferredRowHeight = maxOf(p.rowHeight.dp, minimumRowHeight)
         val rowHeight = if (p.fitWeek) minOf(preferredRowHeight, maxOf(minimumRowHeight, fitted)) else preferredRowHeight
         if (activePage && dragMetrics != null) {
@@ -315,15 +311,15 @@ internal fun WeekGrid(
                         ) {
                             Text(
                                 n.label.ifBlank { "${n.number}" },
-                                fontSize = if (n.label.isNotBlank()) 12.sp else 14.sp,
-                                lineHeight = 17.sp,
+                                fontSize = ((if (n.label.isNotBlank()) 12f else 14f) * labelScale).sp,
+                                lineHeight = (17f * labelScale).sp,
                                 fontWeight = if (isCurrentSection) FontWeight.Medium else FontWeight.Normal,
                                 maxLines = 1,
                                 softWrap = false,
                                 color = if (isCurrentSection) colors.blue else colors.text,
                             )
-                            Text(n.start, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, softWrap = false, color = secColor)
-                            Text(n.end, fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, softWrap = false, color = secColor)
+                            Text(n.start, fontSize = (10f * labelScale).sp, lineHeight = (12f * labelScale).sp, maxLines = 1, softWrap = false, color = secColor)
+                            Text(n.end, fontSize = (10f * labelScale).sp, lineHeight = (12f * labelScale).sp, maxLines = 1, softWrap = false, color = secColor)
                         }
                     }
                     // 0.5.10 起不再画午休 / 晚休横带：空档本身就按时长留白，
@@ -370,7 +366,7 @@ internal fun WeekGrid(
                         val o = entry.occurrence
                         val color = if (entry.inactive) colors.inactive else colors.courseColor(o.course)
                         val cardWidth = (dayWidth - cardInsetX * 2) / item.lanes
-                        val cardHeight = maxOf(if (compactAxis) 24.dp else 1.dp, item.height - cardInsetY * 2)
+                        val cardHeight = maxOf(1.dp, item.height - cardInsetY * 2)
                         val isBeingDragged = dragging?.occurrence?.session?.id == o.session.id && dragging.fromWeek == week
                         val canDrag = dragMetrics != null && !entry.inactive && !entry.conflict &&
                             o.session.mode == TimeMode.SECTIONS && o.session.date == null
@@ -383,7 +379,7 @@ internal fun WeekGrid(
                             prefix = entry.prefix,
                             width = cardWidth,
                             height = cardHeight,
-                            compact = item.compact && !compactAxis,
+                            compact = item.compact,
                             inactive = entry.inactive,
                             hasWeekNote = !o.course.weekNotes[week].isNullOrBlank(),
                             p = p,

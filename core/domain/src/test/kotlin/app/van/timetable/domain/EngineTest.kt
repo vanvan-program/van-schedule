@@ -46,6 +46,17 @@ class EngineTest {
     }
 
     @Test
+    fun nextIncludesLocalAndGlobalMakeupDaysAfterTerm() {
+        val s = table().copy(maxWeeks = 1, sessions = listOf(session.copy(weeks = setOf(1))))
+        val rule = DayOverride("2026-09-18", "2026-09-07")
+        val now = Instant.parse("2026-09-17T04:00:00Z")
+        val expected = LocalDate.parse(rule.date)
+        assertEquals(expected, CourseEngine.next(s.copy(dayOverrides = listOf(rule)), now)?.date)
+        assertEquals(expected, CourseEngine.next(s, now, listOf(rule))?.date)
+        assertNull(CourseEngine.next(s.copy(dayOverrides = listOf(rule.copy(cancelled = true))), now, listOf(rule)))
+    }
+
+    @Test
     fun nextRespectsPriorityAmongOngoingConflicts() {
         val preferred = Course(id = "p", name = "优先课程")
         val s =

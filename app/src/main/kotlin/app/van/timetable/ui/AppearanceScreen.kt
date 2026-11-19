@@ -387,7 +387,7 @@ fun AppearanceMotionPage(p: Preferences, vm: VanViewModel, schedule: Schedule?) 
                 "保留课间时间空档",
                 p.showCourseGaps ?: !canCollapseGaps,
                 { v -> vm.prefs { it.copy(showCourseGaps = v) } },
-                "${if (p.showCourseGaps == null) "当前自动判断。" else "当前使用手动设置。"}课程均在作息节次内时默认收起课间空档，作息外有课时保留；课程卡片始终保留圆角和小间距，空课节次仍保留",
+                "${if (p.showCourseGaps == null) "当前自动判断。" else "当前使用手动设置。"}手动关闭后收紧空白课间和午休，仅为放不下的课程留出位置。空课节次仍显示。",
                 modifier = Modifier.testTag("course-gap-setting"),
             )
             if (p.showCourseGaps != null) TextButton(onClick = { vm.prefs { it.copy(showCourseGaps = null) } }) {

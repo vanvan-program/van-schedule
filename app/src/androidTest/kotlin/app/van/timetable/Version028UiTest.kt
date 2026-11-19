@@ -131,10 +131,31 @@ class Version028UiTest {
         assertRounded(first.id)
     }
 
+    @Test fun consecutivePreferenceWritesWaitForPendingWork() {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val before = runBlocking { store.prefs() }
+        ui.runOnIdle {
+            val vm = androidx.lifecycle.ViewModelProvider(ui.activity)[app.van.timetable.ui.VanViewModel::class.java]
+            vm.work { started.complete(Unit); gate.await() }
+            vm.prefs { it.copy(showWeekend = !before.showWeekend) }
+            vm.prefs { it.copy(showWeekProgress = !before.showWeekProgress) }
+        }
+        try {
+            runBlocking { kotlinx.coroutines.withTimeout(5000) { started.await() } }
+        } finally {
+            gate.complete(Unit)
+        }
+        ui.waitUntil(10000) {
+            val p = runBlocking { store.prefs() }
+            p.showWeekend != before.showWeekend && p.showWeekProgress != before.showWeekProgress
+        }
+    }
+
     @Test fun oldManualFalseStillPreservesRoundedCardsAndOutOfRoutineLessons() {
         val lunch = first.copy(id = "lunch028", mode = TimeMode.CLOCK, start = "12:00", end = "13:00")
         seed(listOf(lunch), Preferences(showCourseGaps = false))
-        assertTrue(section(3).top - section(2).bottom > 10f)
+        assertEquals(section(2).bottom, section(3).top, 1f)
         ui.onNodeWithTag("grid-course-${lunch.id}@$today").performScrollTo().assertIsDisplayed()
         assertTrue(card(lunch.id).height > 10f)
         assertRounded(first.id)

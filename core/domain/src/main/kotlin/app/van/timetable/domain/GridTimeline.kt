@@ -58,6 +58,14 @@ class GridTimeline private constructor(val bands: List<Band>) {
             }
         }
 
+        /** Collapse breaks unless a visible lesson would otherwise have too little height. */
+        fun compact(sections: List<Section>, lessons: List<Pair<LocalTime, LocalTime>>): GridTimeline {
+            val axis = create(sections, 0f)
+            val shortLessons = lessons.filter { (start, end) -> axis.position(end) - axis.position(start) < 0.5f }
+            if (shortLessons.isEmpty()) return axis
+            return create(sections, 0.65f, gapUnitsByMinutes = { 0f }, occupied = shortLessons, edgeGapUnits = 0f)
+        }
+
         fun create(sections: List<Section>, gapUnits: Float = 20f / 56f): GridTimeline =
             create(sections, gapUnits, gapUnitsByMinutes = null, occupied = emptyList())
 
