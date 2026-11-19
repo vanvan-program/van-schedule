@@ -103,4 +103,29 @@ class UpdateSourcesTest {
             file.delete()
         }
     }
+
+    @Test fun truncatedRangeWithoutContentLengthKeepsItsPrefixAndReportsFailure() {
+        val bytes = ByteArray(1024) { (it % 251).toByte() }
+        val file = File.createTempFile("update-test", ".part")
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { e ->
+            e.responseHeaders.add("Content-Range", "bytes 256-1023/1024")
+            e.sendResponseHeaders(206, 0)
+            e.use { it.responseBody.write(bytes, 256, 128) }
+        }
+        server.start()
+        try {
+            file.writeBytes(bytes.copyOf(256))
+            val url = "http://127.0.0.1:${server.address.port}/"
+            val asset = ApkAsset("test.apk", url, "a".repeat(64))
+            val failure = runCatching {
+                transferApk(url, asset, "1", file, false) { _, total -> assertEquals(1024L, total) }
+            }.exceptionOrNull()
+            assertTrue(failure is IOException)
+            assertArrayEquals(bytes.copyOf(384), file.readBytes())
+        } finally {
+            server.stop(0)
+            file.delete()
+        }
+    }
 }

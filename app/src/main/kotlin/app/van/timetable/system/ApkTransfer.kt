@@ -49,6 +49,7 @@ internal fun transferApk(
             if (offset > 0) conn.setRequestProperty("Range", "bytes=$offset-")
             val status = conn.responseCode
             val append = status == HttpURLConnection.HTTP_PARTIAL
+            var rangeTotal: Long? = null
             if (append || status == 416) {
                 val match = Regex("""bytes (\d+)-(\d+)/(\d+)""").matchEntire(conn.getHeaderField("Content-Range").orEmpty())
                 val start = match?.groupValues?.get(1)?.toLongOrNull()
@@ -61,11 +62,19 @@ internal fun transferApk(
                     offset = 0
                     continue
                 }
+                rangeTotal = full
             } else if (status != HttpURLConnection.HTTP_OK) {
                 throw IOException("下载源返回 HTTP $status")
             }
+            if (conn.contentEncoding?.equals("identity", ignoreCase = true) == false) {
+                throw IOException("下载源返回了不支持的文件编码")
+            }
             var written = if (append) offset else 0L
-            val total = expectedSize ?: conn.contentLengthLong.takeIf { it > 0 }?.plus(written)
+            val bodySize = conn.contentLengthLong.takeIf { it >= 0 }
+            val total = rangeTotal ?: expectedSize ?: bodySize?.plus(written)
+            if (total != null && bodySize != null && total - written != bodySize) {
+                throw IOException("下载源返回的文件大小不符")
+            }
             val window = DownloadSpeedWindow(nowMs(), written)
             progress(written, total)
             conn.inputStream.use { input ->
@@ -74,9 +83,9 @@ internal fun transferApk(
                     while (true) {
                         val count = input.read(buffer)
                         if (count < 0) break
-                        output.write(buffer, 0, count)
                         written += count
                         if (total != null && written > total) throw IOException("安装包超过发布大小")
+                        output.write(buffer, 0, count)
                         progress(written, total)
                         if (hasNext && written != total && window.isSlow(nowMs(), written)) {
                             throw IOException("当前下载源持续过慢")

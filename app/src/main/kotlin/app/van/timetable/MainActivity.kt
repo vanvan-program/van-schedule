@@ -36,6 +36,8 @@ class MainActivity : ComponentActivity() {
                     target.getStringExtra("scheduleId"),
                     target.getBooleanExtra("openTimetable", false),
                     launchSequence,
+                    target.getStringExtra("sessionId"),
+                    target.getStringExtra("originalDate"),
                 )
             }
         }

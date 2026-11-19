@@ -5,7 +5,9 @@ import android.Manifest
 import android.app.*
 import android.content.*
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -19,6 +21,8 @@ import kotlinx.coroutines.sync.withLock
 
 object Scheduler {
     private val mutex = Mutex()
+    private const val REMINDER_ID = 2
+    private const val REMINDER_KEYS = "app.van.timetable.reminderKeys"
 
     private fun app(c: Context) = c.applicationContext as VanApplication
 
@@ -69,14 +73,18 @@ object Scheduler {
         )
     }
 
-    private fun content(c: Context, o: Occurrence?) =
+    private fun content(c: Context, scheduleId: String, o: Occurrence) =
         PendingIntent.getActivity(
             c,
             50,
             Intent(c, MainActivity::class.java)
-                .putExtra("courseId", o?.course?.id)
-                .putExtra("date", o?.date?.toString())
-                .setData(android.net.Uri.parse("van://course/${o?.id?:"home"}")),
+                .putExtra("scheduleId", scheduleId)
+                .putExtra("courseId", o.course.id)
+                .putExtra("date", o.date.toString())
+                .putExtra("sessionId", o.session.id)
+                .putExtra("originalDate", CourseEngine.originalDate(o))
+                .setData(Uri.Builder().scheme("van").authority("course").appendPath(scheduleId)
+                    .appendPath(o.id).appendPath(o.date.toString()).build()),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -98,81 +106,92 @@ object Scheduler {
         return all.filter { it.id !in excluded && it.course.reminder }
     }
 
+    private data class Reminder(val occurrence: Occurrence, val key: String, val at: Instant)
+
+    private fun syncReminders(
+        c: Context,
+        scheduleId: String,
+        zone: ZoneId,
+        now: Instant,
+        alarmTime: Long?,
+        reminders: List<Reminder>,
+    ): Instant? {
+        val manager = c.getSystemService(NotificationManager::class.java)
+        val previous = manager.activeNotifications.firstOrNull { it.id == REMINDER_ID && it.tag == null }
+            ?.notification
+        val visibleKeys = previous?.extras?.getStringArrayList(REMINDER_KEYS).orEmpty().toSet()
+        val cache = c.getSharedPreferences("alarm_state", Context.MODE_PRIVATE)
+        val sent = cache.getStringSet("sent", emptySet()).orEmpty()
+        val remaining = reminders.filter { it.occurrence.endsAt(zone) > now }
+        val fresh = remaining.filter { reminder ->
+            reminder.key !in sent && reminder.key !in visibleKeys && reminder.at <= now &&
+                (reminder.occurrence.startsAt(zone) > now || reminder.at.toEpochMilli() == alarmTime)
+        }
+        val freshTimes = fresh.mapTo(hashSetOf()) { it.at }
+        val freshKeys = fresh.mapTo(hashSetOf()) { it.key }
+        val shown = remaining.filter { reminder ->
+            reminder.key in freshKeys || (reminder.key in visibleKeys &&
+                (freshTimes.isEmpty() || reminder.at in freshTimes))
+        }
+        if (shown.isEmpty()) {
+            if (previous != null) manager.cancel(REMINDER_ID)
+            return null
+        }
+
+        val line = shown.joinToString("；") {
+            val lesson = it.occurrence
+            "${lesson.course.name} · ${lesson.place.ifBlank { "地点待定" }} · ${lesson.start}开始"
+        }
+        val keys = shown.map { it.key }
+        if (keys.toSet() != visibleKeys || line != previous?.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()) {
+            val posted = post(c, REMINDER_ID,
+                NotificationCompat.Builder(c, "courses")
+                    .setSmallIcon(R.drawable.ic_van)
+                    .setContentTitle(line)
+                    .setContentText(if (shown.size > 1) "${shown.size}门课程提醒" else "课前提醒")
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(line))
+                    .setContentIntent(content(c, scheduleId, shown.first().occurrence))
+                    .addExtras(Bundle().apply { putStringArrayList(REMINDER_KEYS, ArrayList(keys)) })
+                    .setOnlyAlertOnce(fresh.isEmpty())
+                    .setAutoCancel(true)
+                    .build(),
+            )
+            if (!posted) return null
+            if (fresh.isNotEmpty()) {
+                val recent = (sent + freshKeys).sortedByDescending { it.substringAfterLast('/').toLongOrNull() }
+                    .take(100).toSet()
+                cache.edit().putStringSet("sent", recent).apply()
+            }
+        }
+        return shown.minOf { it.occurrence.endsAt(zone) }
+    }
+
     suspend fun reconcile(c: Context, eventTime: Long? = null) {
         mutex.withLock {
             val store = app(c).store
-            val active = store.active()
-            val s =
-                active
-                    ?: Schedule(
-                        week1Monday =
-                            LocalDate.now(ZoneId.of("Asia/Shanghai"))
-                                .with(
-                                    java.time.temporal.TemporalAdjusters.previousOrSame(
-                                        DayOfWeek.MONDAY
-                                    )
-                                )
-                                .toString()
-                    )
             val p = store.prefs()
+            val active = p.activeScheduleId?.let { id -> store.all().firstOrNull { it.id == id } }
             val alarms = c.getSystemService(AlarmManager::class.java)
-            val pending =
-                PendingIntent.getBroadcast(
-                    c,
-                    1,
-                    Intent(c, AlarmReceiver::class.java),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                )
-            alarms.cancel(pending)
             channels(c)
-            val zone = ZoneId.of(s.zone)
+            val zone = ZoneId.of(active?.zone ?: "Asia/Shanghai")
             val now = Instant.now()
             val date = now.atZone(zone).toLocalDate()
-            val candidates =
-                (0..2).flatMap { d ->
-                    reminderItems(s, date.plusDays(d.toLong()), p.globalDayOverrides)
+            val boundaries = mutableListOf(date.plusDays(1).atStartOfDay(zone).toInstant())
+            if (active != null && p.reminders && allowed(c)) {
+                val candidates = (0..2).flatMap { days ->
+                    reminderItems(active, date.plusDays(days.toLong()), p.globalDayOverrides)
+                }.map { occurrence ->
+                    val at = occurrence.startsAt(zone)
+                        .minusSeconds((occurrence.course.leadMinutes ?: p.leadMinutes) * 60L)
+                    Reminder(occurrence, "${active.id}/${occurrence.id}/${at.toEpochMilli()}", at)
                 }
-            if (p.reminders && eventTime != null && allowed(c)) {
-                val due = candidates.filter { o ->
-                    o.startsAt(zone)
-                        .minusSeconds((o.course.leadMinutes ?: p.leadMinutes) * 60L)
-                        .toEpochMilli() == eventTime && o.endsAt(zone) > now
-                }
-                val cache = c.getSharedPreferences("alarm_state", Context.MODE_PRIVATE)
-                val sent = cache.getStringSet("sent", emptySet()).orEmpty()
-                val fresh = due.filter { "${s.id}/${it.id}/$eventTime" !in sent }
-                if (fresh.isNotEmpty()) {
-                    val first = fresh.first()
-                    val line =
-                        fresh.joinToString("；") {
-                            "${it.course.name} · ${it.place.ifBlank{"地点待定"}} · ${it.start}开始"
-                        }
-                    post(
-                        c,
-                        2,
-                        NotificationCompat.Builder(c, "courses")
-                            .setSmallIcon(R.drawable.ic_van)
-                            .setContentTitle(line)
-                            .setContentText(if (fresh.size > 1) "${fresh.size}门课程提醒" else "课前提醒")
-                            .setStyle(NotificationCompat.BigTextStyle().bigText(line))
-                            .setContentIntent(content(c, first))
-                            .setAutoCancel(true)
-                            .build(),
-                    )
-                    cache
-                        .edit()
-                        .putStringSet(
-                            "sent",
-                            (sent + fresh.map { "${s.id}/${it.id}/$eventTime" })
-                                .toList()
-                                .takeLast(100)
-                                .toSet(),
-                        )
-                        .apply()
-                }
+                boundaries += candidates.map { it.at }
+                syncReminders(c, active.id, zone, now, eventTime, candidates)?.let { boundaries += it }
+            } else {
+                NotificationManagerCompat.from(c).cancel(REMINDER_ID)
             }
             if (active != null && p.statusNotification && allowed(c)) {
-                val next = CourseEngine.next(s, now, p.globalDayOverrides)
+                val next = CourseEngine.next(active, now, p.globalDayOverrides)
                 if (next == null) NotificationManagerCompat.from(c).cancel(1)
                 else
                     post(
@@ -184,24 +203,17 @@ object Scheduler {
                             .setContentText(
                                 if (now >= next.startsAt(zone)) "正在上课" else "下一节 · ${next.date}"
                             )
-                            .setContentIntent(content(c, next))
+                            .setContentIntent(content(c, active.id, next))
                             .setOnlyAlertOnce(true)
                             .setOngoing(true)
                             .build(),
                     )
             } else NotificationManagerCompat.from(c).cancel(1)
-            Widgets.updateAll(c)
-            val boundaries = mutableListOf(date.plusDays(1).atStartOfDay(zone).toInstant())
             boundaries += Widgets.boundaries(c, now)
-            if (p.reminders)
-                candidates.forEach { o ->
-                    boundaries +=
-                        o.startsAt(zone).minusSeconds((o.course.leadMinutes ?: p.leadMinutes) * 60L)
-                }
-            if (p.statusNotification || Widgets.hasAny(c))
+            if (active != null && p.statusNotification && allowed(c))
                 (0..1)
                     .flatMap {
-                        CourseEngine.resolveDay(s, date.plusDays(it.toLong()), p.globalDayOverrides)
+                        CourseEngine.resolveDay(active, date.plusDays(it.toLong()), p.globalDayOverrides)
                     }
                     .forEach { o ->
                         boundaries += o.startsAt(zone)
@@ -227,6 +239,7 @@ object Scheduler {
             } catch (_: SecurityException) {
                 alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.toEpochMilli(), pi)
             }
+            Widgets.updateAll(c, now)
         }
     }
 }

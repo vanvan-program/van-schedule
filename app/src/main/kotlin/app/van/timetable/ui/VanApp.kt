@@ -72,6 +72,8 @@ fun VanApp(
     initialSchedule: String? = null,
     openTimetable: Boolean = false,
     launchSequence: Int = 0,
+    initialSession: String? = null,
+    initialOriginalDate: String? = null,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -98,7 +100,8 @@ fun VanApp(
     var viewedScheduleId by rememberSaveable { mutableStateOf(initialSchedule) }
     var handledLaunch by rememberSaveable { mutableIntStateOf(-1) }
     var handledLaunchTarget by rememberSaveable { mutableStateOf<String?>(null) }
-    val launchTarget = listOf(initialCourse, initialDate, initialSchedule, openTimetable).toString()
+    val launchTarget = listOf(initialCourse, initialDate, initialSchedule, openTimetable,
+        initialSession, initialOriginalDate).toString()
     val displayed =
         if (viewedScheduleId == null) state.active
         else state.schedules.firstOrNull { it.id == viewedScheduleId }
@@ -127,10 +130,7 @@ fun VanApp(
     }
     LaunchedEffect(
         state.ready,
-        initialCourse,
-        initialDate,
-        initialSchedule,
-        openTimetable,
+        launchTarget,
         launchSequence,
     ) {
         if (!state.ready || (handledLaunch == launchSequence && handledLaunchTarget == launchTarget))
@@ -145,12 +145,14 @@ fun VanApp(
             viewedScheduleId = initialSchedule
             home()
             tab = 0
-            val targetSchedule =
-                initialSchedule?.let { id -> state.schedules.firstOrNull { it.id == id } }
-                    ?: state.active
-            if (targetSchedule?.courses?.any { it.id == initialCourse } == true)
-                nav("detail:$initialCourse${initialDate?.let{":$it"}.orEmpty()}")
-            else message = "这门课程或绑定的课表已删除"
+            val targetSchedule = if (initialSchedule == null) state.active
+                else state.schedules.firstOrNull { it.id == initialSchedule }
+            if (targetSchedule?.courses?.any { it.id == initialCourse } == true) {
+                val detail = if (initialDate == null) VanRoute.CourseDetail(initialCourse)
+                    else VanRoute.CourseDetail(initialCourse, initialDate, initialSession,
+                        initialOriginalDate.takeIf { initialSession != null })
+                nav(detail.key)
+            } else message = "这门课程或绑定的课表已删除"
         }
     }
     var backProgress by remember { mutableFloatStateOf(0f) }
@@ -373,6 +375,7 @@ fun VanApp(
                         val importKey = when (route) {
                             VanRoute.DocumentReview -> document?.id.orEmpty()
                             VanRoute.ImportPreview -> imported?.schedules?.firstOrNull()?.id.orEmpty()
+                            VanRoute.ImportUpdate -> vm.importUpdateDraft?.id.orEmpty()
                             else -> ""
                         }
                         val destination = VanDestination(route, tab, displayed?.id, importKey, stack.size)
@@ -437,18 +440,14 @@ fun VanApp(
                                             },
                                             onRestoreSnapshot = {
                                                 vm.work {
-                                                    val text =
-                                                        context
-                                                            .openFileInput("before-restore.van.json")
-                                                            .bufferedReader()
-                                                            .use { it.readText() }
-                                                    vm.importData.value = Codec.restore(text)
+                                                    vm.importData.value = vm.store.readBackupSnapshot()
                                                     vm.importWarnings.value =
-                                                        listOf("这是上一次完整恢复前的本机快照")
+                                                        listOf("这是上一次覆盖课表前的本机快照")
                                                     withContext(Dispatchers.Main) { nav("preview") }
                                                 }
                                             },
                                             onImportApplied = {
+                                                vm.importUpdateDraft = null
                                                 vm.documentSource.value = null
                                                 vm.documentDrafts.clear()
                                                 stack.clear()

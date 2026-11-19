@@ -97,12 +97,23 @@ internal fun VanNavHost(env: VanNavHostEnv) {
         VanRoute.ImportPreview -> {
             val imported = env.imported
             if (imported != null)
-                ImportPreview(vm, imported, env.warnings, back) { env.onImportApplied() }
+                ImportPreview(vm, imported, env.warnings, state.schedules.isNotEmpty(), { draft ->
+                    vm.importUpdateDraft = draft
+                    nav(VanRoute.ImportUpdate.key)
+                }, back, env.onImportApplied)
             else
                 Column(Modifier.padding(24.dp)) {
                     Text("导入草稿已清除")
                     TextButton(onClick = back) { Text("返回") }
                 }
+        }
+        VanRoute.ImportUpdate -> {
+            val draft = vm.importUpdateDraft
+            if (draft != null) ImportUpdateScreen(draft, state, vm, back, env.onImportApplied)
+            else Column(Modifier.padding(24.dp)) {
+                Text("请返回导入预览重新选择课表")
+                TextButton(onClick = back) { Text("返回") }
+            }
         }
         VanRoute.School -> SchoolEntry(state.preferences, vm, env.onSchoolEntry, env.onPickFile)
         VanRoute.ScheduleList -> ScheduleList(state, vm, nav)

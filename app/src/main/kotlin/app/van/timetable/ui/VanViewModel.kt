@@ -3,6 +3,9 @@ package app.van.timetable.ui
 
 import android.app.Application
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.van.timetable.VanApplication
@@ -42,6 +45,7 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val busy = MutableStateFlow(false)
     val importData = MutableStateFlow<Backup?>(null)
+    var importUpdateDraft by mutableStateOf<Schedule?>(null)
     val importWarnings = MutableStateFlow<List<String>>(emptyList())
     val documentSource = MutableStateFlow<DocumentSource?>(null)
     // Large recognition drafts stay in the ViewModel, outside the Activity's size-limited Bundle.
@@ -77,6 +81,15 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
         store.save(s)
         if (activate) store.updatePreferences { it.copy(activeScheduleId = s.id) }
         withContext(Dispatchers.Main) { after() }
+    }
+
+    fun applyImportUpdate(plan: ScheduleUpdate.Plan, preview: ScheduleUpdate.Preview, after: () -> Unit) = work {
+        store.updateFromImport(plan.original, preview.schedule, plan.globalDays)
+        withContext(Dispatchers.Main) {
+            importData.value = null
+            after()
+            messages.emit("课表已更新，覆盖前快照已保存")
+        }
     }
 
     fun prefs(transform: (Preferences) -> Preferences) = submitWrite { store.updatePreferences(transform) }

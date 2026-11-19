@@ -61,7 +61,7 @@ class InAppUpdateInstallerTest {
         assertTrue("应当干净地失败：$result", result is UpdateInstaller.Download.Failed)
         val leftover = UpdateInstaller.cachedFile(context, "9.9.9-none")
         assertFalse("失败后不能留下安装包", leftover.exists())
-        assertFalse("失败后不能留下半成品", File(leftover.parentFile, "${leftover.name}.part").exists())
+        assertFalse("未收到数据时不保留断点", requireNotNull(UpdateInstaller.partialFile(context, "9.9.9-none", asset)).exists())
     }
 
     @Test fun downloadReportsConnectingStageBeforeGivingUp() {
@@ -87,5 +87,15 @@ class InAppUpdateInstallerTest {
         assertTrue("失败之前必须先报「正在连接」，界面才会显示提示：$stages", first is UpdateInstaller.Stage.Connecting)
         assertEquals(1, (first as UpdateInstaller.Stage.Connecting).index)
         assertFalse("失败时不能报就绪", stages.any { it is UpdateInstaller.Stage.Ready })
+    }
+
+    @Test fun aPartialBelongsToOneVersionAndOneVerifiedAsset() {
+        val asset = app.van.timetable.domain.ApkAsset("test.apk", "https://example.invalid/test.apk", "a".repeat(64))
+        val path = requireNotNull(UpdateInstaller.partialFile(context, "9.9.9", asset))
+        assertEquals(path, UpdateInstaller.partialFile(context, "9.9.9", asset.copy(sha256 = "A".repeat(64))))
+        assertNotEquals(path, UpdateInstaller.partialFile(context, "9.9.8", asset))
+        assertNotEquals(path, UpdateInstaller.partialFile(context, "9.9.9", asset.copy(sha256 = "b".repeat(64))))
+        assertNotEquals(path, UpdateInstaller.partialFile(context, "9.9.9", asset.copy(url = "https://example.invalid/other.apk")))
+        assertNull(UpdateInstaller.partialFile(context, "9.9.9", asset.copy(sha256 = null)))
     }
 }

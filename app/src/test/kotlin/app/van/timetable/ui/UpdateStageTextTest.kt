@@ -20,7 +20,7 @@ class UpdateStageTextTest {
         assertEquals("正在连接…", updateButtonLabel(Stage.Connecting(viaMirror = false, index = 1, count = 3), 0))
         assertEquals("正在下载 42%", updateButtonLabel(Stage.Downloading(false, 6_000_000, 13_595_842), 42))
         assertEquals("正在校验…", updateButtonLabel(Stage.Verifying(false), 100))
-        assertEquals("正在安装…", updateButtonLabel(Stage.Ready, 100))
+        assertEquals("安装包已就绪", updateButtonLabel(Stage.Ready, 100))
     }
 
     @Test

@@ -42,6 +42,11 @@ sealed interface VanRoute {
         override val title = "导入预览"
     }
 
+    data object ImportUpdate : VanRoute {
+        override val key = "importUpdate"
+        override val title = "更新已有课表"
+    }
+
     data object School : VanRoute {
         override val key = "school"
         override val title = "教务导入"
@@ -220,6 +225,7 @@ fun vanRouteOf(raw: String): VanRoute {
         "import" -> VanRoute.Import
         "document" -> VanRoute.DocumentReview
         "preview" -> VanRoute.ImportPreview
+        "importUpdate" -> VanRoute.ImportUpdate
         "school" -> VanRoute.School
         "schedules" -> VanRoute.ScheduleList
         "newSchedule" -> VanRoute.NewSchedule

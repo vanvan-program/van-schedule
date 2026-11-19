@@ -50,14 +50,7 @@ object CourseEngine {
         val routine = routine(schedule, display)
         val courses = schedule.courses.associateBy { it.id }
         return schedule.sessions
-            .filter {
-                it.mode != TimeMode.UNTIMED &&
-                    (if (it.date != null) LocalDate.parse(it.date) == source
-                    else
-                        w in 1..schedule.maxWeeks &&
-                            it.day == source.dayOfWeek.value &&
-                            w in it.weeks)
-            }
+            .filter { isScheduledOn(it, source, w, schedule.maxWeeks) }
             .map { s ->
                 val start =
                     if (s.mode == TimeMode.CLOCK) LocalTime.parse(s.start)
@@ -81,16 +74,28 @@ object CourseEngine {
             }
     }
 
+    internal fun isScheduledOn(session: CourseSession, source: LocalDate, week: Int, maxWeeks: Int): Boolean =
+        session.mode != TimeMode.UNTIMED &&
+            if (session.date != null) LocalDate.parse(session.date) == source
+            else week in 1..maxWeeks && session.day == source.dayOfWeek.value && week in session.weeks
+
     private fun planned(
         schedule: Schedule,
         date: LocalDate,
         globalDayOverrides: List<DayOverride> = emptyList(),
-    ): List<Occurrence> {
+    ): List<Occurrence> = plannedSourceDate(schedule, date, globalDayOverrides)
+        ?.let { raw(schedule, it, date) }.orEmpty()
+
+    internal fun plannedSourceDate(
+        schedule: Schedule,
+        date: LocalDate,
+        globalDayOverrides: List<DayOverride>,
+    ): LocalDate? {
         val rule =
             schedule.dayOverrides.firstOrNull { it.date == date.toString() }
                 ?: globalDayOverrides.firstOrNull { it.date == date.toString() }
-        if (rule?.cancelled == true) return emptyList()
-        return raw(schedule, rule?.sourceDate?.let(LocalDate::parse) ?: date, date)
+        if (rule?.cancelled == true) return null
+        return rule?.sourceDate?.let(LocalDate::parse) ?: date
     }
 
     fun resolveDay(

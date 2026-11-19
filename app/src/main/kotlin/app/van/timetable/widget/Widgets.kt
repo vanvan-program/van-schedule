@@ -66,10 +66,6 @@ object Widgets {
     private val classes =
         listOf(DualWidget::class.java, TodayWidget::class.java, NextWidget::class.java)
 
-    fun hasAny(c: Context) = classes.any {
-        AppWidgetManager.getInstance(c).getAppWidgetIds(ComponentName(c, it)).isNotEmpty()
-    }
-
     private fun timetableIntent(c: Context, scheduleId: String?, date: String? = null) =
         Intent(c, MainActivity::class.java)
             .putExtra("scheduleId", scheduleId)
@@ -99,14 +95,14 @@ object Widgets {
         }
     }
 
-    suspend fun updateAll(c: Context) {
+    suspend fun updateAll(c: Context, now: Instant = Instant.now()) {
         val m = AppWidgetManager.getInstance(c)
         classes.forEach { clazz ->
-            m.getAppWidgetIds(ComponentName(c, clazz)).forEach { id -> update(c, id, clazz) }
+            m.getAppWidgetIds(ComponentName(c, clazz)).forEach { id -> update(c, id, clazz, now) }
         }
     }
 
-    suspend fun update(c: Context, id: Int, clazz: Class<*>? = null) {
+    suspend fun update(c: Context, id: Int, clazz: Class<*>? = null, now: Instant = Instant.now()) {
         val app = c.applicationContext as VanApplication
         val s = schedule(c, id)
         val p = app.store.prefs()
@@ -123,7 +119,6 @@ object Widgets {
         val tiny = widgetHeight <= 100
         val text = monet?.title ?: Color.parseColor(if (dark) "#ECECF3" else "#252635")
         val secondary = monet?.secondary ?: Color.parseColor(if (dark) "#B3B3C2" else "#737583")
-        val now = Instant.now()
         val zone = ZoneId.of(s?.zone ?: "Asia/Shanghai")
         val today = now.atZone(zone).toLocalDate()
         val view =

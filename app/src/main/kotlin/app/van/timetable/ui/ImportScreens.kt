@@ -27,7 +27,7 @@ fun ImportEntry(selectFile: () -> Unit, nav: (String) -> Unit) {
             Text(
                 "PDF、Excel与图片：先核对识别结果，再确认学期和作息。Excel支持.xlsx和.xls。\nWakeUp备份：课程、周次、作息和学期。\nCSV：课程、节次、周次、老师和地点，需要确认开学日期与作息。\nvan课表：支持完整备份与单份课表。"
             )
-            Muted("导入默认保存为新课表，不覆盖旧表，也不自动复制旧表备注和调课。")
+            Muted("导入后可另存为新课表，也可先核对差异再更新已有课表。")
         }
     }
 }
@@ -77,6 +77,8 @@ fun ImportPreview(
     vm: VanViewModel,
     backup: Backup,
     warnings: List<String>,
+    hasSchedules: Boolean,
+    reviewUpdate: (Schedule) -> Unit,
     back: () -> Unit,
     finished: () -> Unit,
 ) {
@@ -134,6 +136,10 @@ fun ImportPreview(
             )
             Muted("来源：${s.source}")
             warnings.forEach { Text(it, color = LocalVan.current.blue) }
+        }
+        if (hasSchedules) {
+            Action("更新已有课表", "选择课表并核对变化，覆盖前自动备份") { reviewUpdate(s) }
+            Muted("下方的名称、学期和作息用于另存新课表。")
         }
         Field(name, { name = it }, "新课表名称")
         Field(monday, { monday = it }, "第1周周一 YYYY-MM-DD")

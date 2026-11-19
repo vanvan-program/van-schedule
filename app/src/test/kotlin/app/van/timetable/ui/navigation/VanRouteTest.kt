@@ -19,6 +19,7 @@ class VanRouteTest {
             VanRoute.Import,
             VanRoute.DocumentReview,
             VanRoute.ImportPreview,
+            VanRoute.ImportUpdate,
             VanRoute.School,
             VanRoute.ScheduleList,
             VanRoute.NewSchedule,

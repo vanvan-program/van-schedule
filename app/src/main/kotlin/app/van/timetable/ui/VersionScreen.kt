@@ -5,23 +5,28 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.compose.animation.EnterExitState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.van.timetable.VanApplication
 import app.van.timetable.domain.AppRelease
 import app.van.timetable.domain.Preferences
 import app.van.timetable.domain.UpdateCheck
 import app.van.timetable.system.UpdateChecker
+import app.van.timetable.system.UpdateDownloads
 import app.van.timetable.system.UpdateInstaller
 import androidx.compose.ui.Alignment
 import java.time.Instant
@@ -59,18 +64,32 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
     var state by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var dialog by remember { mutableStateOf(false) }
     var openFailed by remember { mutableStateOf(false) }
-    var download by remember { mutableStateOf<DownloadUi?>(null) }
+    val downloads = (context.applicationContext as VanApplication).updateDownloads
+    val task = downloads.task.collectAsStateWithLifecycle()
+    val downloadRelease by remember(task) { derivedStateOf { task.value?.release } }
+    val downloading by remember(task) { derivedStateOf { task.value?.state is UpdateDownloads.State.Busy } }
+    val finished by remember(task) { derivedStateOf { (task.value?.state as? UpdateDownloads.State.Finished)?.result } }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val transition = LocalDetailVisibility.current?.transition
+    val visible = transition == null || transition.targetState == EnterExitState.Visible
+    var autoInstall by remember { mutableStateOf<AppRelease?>(null) }
     var installNote by remember { mutableStateOf<String?>(null) }
     var needsPermission by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val scroll = rememberScrollState()
 
-    /** 点击「立即更新」：应用内下载安装包，再交给系统安装器覆盖安装。 */
     fun startUpdate(release: AppRelease) {
         dialog = false
-        if (download is DownloadUi.Busy) return
-        val asset = release.apk
-        if (asset == null) {
-            installNote = "这次发布没有附带安装包，只能改用下面的浏览器下载。"
+        if (!downloads.start(release, p.useDownloadMirror, p.preferredDownloadSource)) return
+        autoInstall = release
+        installNote = null
+        needsPermission = false
+        scope.launch { scroll.animateScrollTo(0) }
+    }
+
+    fun installUpdate(release: AppRelease, ready: UpdateInstaller.Download.Ready) {
+        if (!ready.file.isFile) {
+            startUpdate(release)
             return
         }
         if (!UpdateInstaller.canInstall(context)) {
@@ -79,42 +98,22 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
             return
         }
         needsPermission = false
-        installNote = null
-        download = DownloadUi.Busy(stage = null, percent = 0)
-        scope.launch {
-            val result =
-                withContext(Dispatchers.IO) {
-                    UpdateInstaller.download(
-                        context = context,
-                        asset = asset,
-                        version = release.version,
-                        useMirror = p.useDownloadMirror,
-                        preferredSource = p.preferredDownloadSource,
-                        onProgress = { percent ->
-                            scope.launch(Dispatchers.Main) {
-                                (download as? DownloadUi.Busy)?.let { download = it.copy(percent = percent) }
-                            }
-                        },
-                        onStage = { stage ->
-                            scope.launch(Dispatchers.Main) {
-                                (download as? DownloadUi.Busy)?.let { download = it.copy(stage = stage) }
-                            }
-                        },
-                    )
-                }
-            download = null
-            when (result) {
-                is UpdateInstaller.Download.Ready -> {
-                    val opened = UpdateInstaller.install(context, result.file)
-                    val via = if (result.viaMirror) "（通过加速镜像下载，已校验）" else ""
-                    installNote =
-                        if (opened) "已打开系统安装界面$via，按提示点「安装」就能完成更新，课表和设置会保留。"
-                        else "没能调起系统安装界面$via，请确认已允许安装未知应用，或改用浏览器下载。"
-                }
-                // 失败原因留在页面上，配「重试」，不要一闪而过。
-                is UpdateInstaller.Download.Failed -> download = DownloadUi.Failed(result.message)
-            }
+        installNote = if (UpdateInstaller.install(context, ready.file))
+            "已打开系统安装界面。按提示安装即可保留课表和设置。"
+        else "没能打开系统安装界面，请重试或改用浏览器下载。"
+    }
+
+    LaunchedEffect(finished, autoInstall, visible) {
+        if (!visible) autoInstall = null
+        val release = autoInstall
+        val ready = finished as? UpdateInstaller.Download.Ready
+        if (release != null && release == downloadRelease && ready != null) {
+            autoInstall = null
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) installUpdate(release, ready)
         }
+    }
+    LaunchedEffect(Unit) {
+        if (downloads.task.value != null) scroll.scrollTo(0)
     }
 
     fun openPage(url: String): Boolean {
@@ -149,7 +148,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
     }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        Modifier.fillMaxSize().verticalScroll(scroll).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Panel(Modifier.testTag("version-panel")) {
@@ -157,6 +156,15 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
             Text("版本代码 ${info.code}")
             Muted("包名 ${context.packageName}")
             Muted("Android ${Build.VERSION.RELEASE}（API ${Build.VERSION.SDK_INT}） · GPL-3.0-only")
+        }
+        downloadRelease?.let { release ->
+            DownloadPanel(
+                task, needsPermission, installNote, openFailed,
+                retry = { startUpdate(release) },
+                install = { installUpdate(release, it) },
+                allowInstall = { UpdateInstaller.openInstallSettings(context) },
+                browser = { openFailed = !openPage(release.pageUrl) },
+            )
         }
         Panel(Modifier.testTag("update-panel")) {
             Text("检查版本更新", fontWeight = FontWeight.Medium)
@@ -193,8 +201,8 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                 }
             }
             when (val current = state) {
-                UpdateState.Idle ->
-                    Muted("尚未检查。最新版本来自 GitHub：github.com/${UpdateChecker.REPO}")
+                UpdateState.Idle -> Muted(if (downloadRelease == null)
+                    "尚未检查。最新版本来自 GitHub：github.com/${UpdateChecker.REPO}" else "可以重新检查最新发布版本。")
                 UpdateState.Checking -> Muted("正在连接 GitHub 发布页…")
                 is UpdateState.Current -> {
                     val localAhead = UpdateCheck.isNewer(info.name, current.latestVersion)
@@ -237,22 +245,17 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                     } else {
                         Muted("这条更新说明只包含版本号，请到发布页查看完整内容。")
                     }
-                    val busy = download as? DownloadUi.Busy
-                    val failure = download as? DownloadUi.Failed
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Button(
-                            onClick = { startUpdate(release) },
-                            enabled = busy == null && release.apk != null,
-                            modifier = Modifier.testTag("install-update"),
-                        ) {
-                            if (busy != null) {
-                                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Spacer(Modifier.width(10.dp))
-                                Text(updateButtonLabel(busy.stage, busy.percent))
-                            } else {
+                        val sameDownload = downloadRelease?.let { it.version == release.version && it.apk == release.apk } == true
+                        if (!sameDownload) {
+                            Button(
+                                onClick = { startUpdate(release) },
+                                enabled = !downloading && release.apk != null,
+                                modifier = Modifier.testTag("install-update"),
+                            ) {
                                 Text("立即更新")
                             }
                         }
@@ -260,52 +263,12 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                             Text("改用浏览器下载")
                         }
                     }
-                    if (busy != null) {
-                        val stage = busy.stage
-                        if (stage is UpdateInstaller.Stage.Downloading && stage.total != null) {
-                            LinearProgressIndicator(
-                                progress = { busy.percent / 100f },
-                                modifier = Modifier.fillMaxWidth().testTag("update-progress"),
-                            )
-                        } else {
-                            // 连接、校验、安装这几步没有可信的百分比，用不确定进度条，别硬装成 0%。
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().testTag("update-progress"))
-                        }
-                        Muted(updateStageHint(stage, busy.percent))
-                    }
-                    if (failure != null) {
-                        Text(
-                            "下载失败",
-                            color = MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.testTag("update-error"),
-                        )
-                        Muted(failure.message)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { startUpdate(release) }) { Text("重试") }
-                            TextButton(onClick = { openFailed = !openPage(release.pageUrl) }) {
-                                Text("改用浏览器下载")
-                            }
-                        }
-                    }
                     if (release.apk == null) {
                         Muted("这次发布没有附带安装包，应用内更新不可用，请用浏览器下载。")
                     } else if (release.apk?.sha256 == null) {
                         // 走发布动态 / 跳转页兜底时拿不到附件摘要：直链按发布约定拼出，
                         // 下载后仍强制校验签名证书，只有原签名的包才装得上。
-                        Muted("当前查询源没有提供 SHA-256。下载后会核对包名、版本和签名。")
-                    }
-                    if (needsPermission) {
-                        Text("需要先允许安装未知应用", fontWeight = FontWeight.Medium)
-                        Muted("Android 要求由你为 van课表单独开启这项权限；开启后回到这里再点「立即更新」。")
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { UpdateInstaller.openInstallSettings(context) }) { Text("去开启") }
-                            TextButton(onClick = { needsPermission = false }) { Text("取消") }
-                        }
-                    }
-                    if (installNote != null) Muted(installNote!!)
-                    else if (!needsPermission && failure == null && busy == null) {
-                        Muted("下载后由系统弹窗确认安装；包名与原签名不变，课表和设置会保留。")
+                        Muted("当前查询源没有提供 SHA-256，下载中断后需从头下载。安装前会核对包名、版本和签名。")
                     }
                     if (openFailed) Muted("没有打开可用的浏览器，请手动访问：${release.pageUrl}")
                 }
@@ -315,7 +278,6 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
         Action("开源与第三方许可", "查看本地许可声明") {
             context.startActivity(Intent(context, app.van.timetable.LicenseActivity::class.java))
         }
-        Muted("检查更新只在点击时发起，本机不保存检查结果，也不在后台自动联网；下载的安装包只放在缓存目录，校验签名后才交给系统安装。")
     }
 
     if (dialog) {
@@ -337,6 +299,7 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                 },
                 confirmButton = {
                     TextButton(
+                        enabled = release.apk != null && !downloading,
                         onClick = {
                             dialog = false
                             startUpdate(release)
@@ -347,6 +310,62 @@ fun VersionScreen(nav: (String) -> Unit, p: Preferences, vm: VanViewModel) {
                 },
                 dismissButton = { TextButton(onClick = { dialog = false }) { Text("稍后") } },
             )
+        }
+    }
+}
+
+@Composable
+private fun DownloadPanel(
+    current: State<UpdateDownloads.Task?>,
+    needsPermission: Boolean,
+    installNote: String?,
+    browserError: Boolean,
+    retry: () -> Unit,
+    install: (UpdateInstaller.Download.Ready) -> Unit,
+    allowInstall: () -> Unit,
+    browser: () -> Unit,
+) {
+    val task = current.value ?: return
+    Panel(Modifier.testTag("update-download")) {
+        Text("下载 ${task.release.version}", style = MaterialTheme.typography.titleMedium)
+        when (val state = task.state) {
+            is UpdateDownloads.State.Busy -> {
+                val stage = state.stage
+                val progress = Modifier.fillMaxWidth().testTag("update-progress")
+                Text(updateButtonLabel(stage, state.percent), fontWeight = FontWeight.Medium)
+                if (stage is UpdateInstaller.Stage.Downloading && stage.total != null) {
+                    LinearProgressIndicator(progress = { state.percent / 100f }, modifier = progress)
+                } else {
+                    LinearProgressIndicator(modifier = progress)
+                }
+                Text(updateStageHint(stage, state.percent), color = LocalVan.current.muted, fontSize = 13.sp)
+            }
+            is UpdateDownloads.State.Finished -> when (val result = state.result) {
+                is UpdateInstaller.Download.Ready -> {
+                    Text("安装包已就绪，校验通过")
+                    if (needsPermission) {
+                        Muted("请为 van课表开启「允许安装未知应用」，再返回安装。")
+                        OutlinedButton(onClick = allowInstall) { Text("去开启") }
+                    }
+                    Button(onClick = { install(result) }, modifier = Modifier.testTag("install-downloaded-update")) {
+                        Text("安装更新")
+                    }
+                    installNote?.let { Muted(it) }
+                }
+                is UpdateInstaller.Download.Failed -> {
+                    Text("下载失败", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.testTag("update-error"))
+                    Muted(result.message)
+                    if (result.retainedBytes > 0) {
+                        Muted("已保留 ${megaBytes(result.retainedBytes)}，重试时会尝试续传。")
+                    }
+                    Button(onClick = retry, modifier = Modifier.testTag("retry-update")) { Text("重试下载") }
+                }
+            }
+        }
+        if (task.state is UpdateDownloads.State.Finished) {
+            TextButton(onClick = browser) { Text("改用浏览器下载") }
+            if (browserError) Muted("没有打开可用的浏览器，请手动访问 ${task.release.pageUrl}")
         }
     }
 }
@@ -364,12 +383,6 @@ private sealed interface UpdateState {
     data class Failed(val message: String) : UpdateState
 }
 
-/** 应用内下载的状态：进行中（阶段 + 百分比）或失败（原因 + 重试）。 */
-private sealed interface DownloadUi {
-    data class Busy(val stage: UpdateInstaller.Stage?, val percent: Int) : DownloadUi
-
-    data class Failed(val message: String) : DownloadUi
-}
 
 private data class InstalledVersion(val name: String, val code: Long)
 

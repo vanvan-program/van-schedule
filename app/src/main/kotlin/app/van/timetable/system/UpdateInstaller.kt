@@ -12,11 +12,13 @@ import androidx.core.content.FileProvider
 import app.van.timetable.domain.ApkAsset
 import app.van.timetable.domain.UpdateCheck
 import java.io.File
+import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
 import java.security.MessageDigest
+import java.util.concurrent.CancellationException
 import javax.net.ssl.SSLException
 
 /**
@@ -35,7 +37,7 @@ object UpdateInstaller {
         /** [viaMirror] 表示这份安装包是从公共加速镜像取到的，不是 GitHub 直连。 */
         data class Ready(val file: File, val viaMirror: Boolean = false) : Download
 
-        data class Failed(val message: String) : Download
+        data class Failed(val message: String, val retainedBytes: Long = 0) : Download
     }
 
     /**
@@ -44,7 +46,10 @@ object UpdateInstaller {
      */
     sealed interface Stage {
         /** 正在连接某个下载地址。[index] 从 1 开始，[count] 是本次可用的地址总数。 */
-        data class Connecting(val viaMirror: Boolean, val index: Int, val count: Int, val sourceName: String? = null) : Stage
+        data class Connecting(
+            val viaMirror: Boolean, val index: Int, val count: Int, val sourceName: String? = null,
+            val retainedBytes: Long = 0,
+        ) : Stage
 
         /** 正在下载。[bytes] 已收字节数，[total] 是总字节数（服务器没给长度时为 null）。 */
         data class Downloading(val viaMirror: Boolean, val bytes: Long, val total: Long?, val sourceName: String? = null) : Stage
@@ -61,6 +66,15 @@ object UpdateInstaller {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         return File(dir, "van-timetable-${version.replace(Regex("[^0-9A-Za-z._-]"), "_")}.apk")
     }
+
+    internal fun partialFile(context: Context, version: String, asset: ApkAsset): File? {
+        val digest = UpdateCheck.normalizeSha256(asset.sha256) ?: return null
+        val identity = listOf(version, asset.name, asset.url.trim(), digest).joinToString("\u0000")
+        val hash = MessageDigest.getInstance("SHA-256").digest(identity.toByteArray()).toHex()
+        return File(transferDirectory(context), "$hash.part.apk")
+    }
+
+    private fun transferDirectory(context: Context): File = File(context.cacheDir, "update-transfers")
 
     /** 是否允许安装未知来源应用；Android 8 起需要用户按应用单独授权。 */
     fun canInstall(context: Context): Boolean =
@@ -88,6 +102,7 @@ object UpdateInstaller {
      * 国内直连 GitHub 常常很慢，所以按 [UpdateCheck.downloadSources] 的顺序换源：
      * 先尝试用户选择的下载源，再依次尝试其余地址。无论从哪下载，最后都要过摘要与签名校验。
      */
+    @Synchronized
     fun download(
         context: Context,
         asset: ApkAsset,
@@ -97,31 +112,53 @@ object UpdateInstaller {
         onProgress: (Int) -> Unit = {},
         onStage: (Stage) -> Unit = {},
     ): Download {
+        val checkedAsset = asset.copy(sha256 = UpdateCheck.normalizeSha256(asset.sha256), size = asset.size?.takeIf { it > 0 })
         val target = cachedFile(context, version)
-        if (target.isFile && verifyFile(context, target, asset) && matchesRelease(context, target, version)) {
+        val saved = partialFile(context, version, checkedAsset)
+        if (target.isFile && verifyFile(context, target, checkedAsset) && matchesRelease(context, target, version)) {
+            saved?.delete()
             onProgress(100)
             onStage(Stage.Ready)
             return Download.Ready(target)
         }
-        val sources = UpdateCheck.downloadSources(asset.url, useMirror, preferredSource)
+        val sources = UpdateCheck.downloadSources(checkedAsset.url, useMirror, preferredSource)
         if (sources.isEmpty()) return Download.Failed("没有可用的下载地址")
+        val directory = transferDirectory(context)
         val partial = try {
-            File.createTempFile("update-", ".apk", target.parentFile)
-        } catch (e: java.io.IOException) {
+            if (!directory.isDirectory && !directory.mkdirs()) throw IOException("下载缓存不可用")
+            directory.listFiles()?.filter { it.isFile && it.name.endsWith(".part.apk") && it != saved }
+                ?.forEach { it.delete() }
+            saved ?: File.createTempFile("update-", ".part.apk", directory)
+        } catch (e: IOException) {
             return Download.Failed("无法创建下载文件，请检查存储空间")
+        }
+        fun finish(mirror: Boolean): Download {
+            if (!partial.renameTo(target)) {
+                return Download.Failed("无法保存安装包，请检查存储空间", if (saved == null) 0 else partial.length())
+            }
+            onProgress(100)
+            onStage(Stage.Ready)
+            return Download.Ready(target, mirror)
         }
         var failure = "下载失败，请稍后重试"
         try {
+            if (partial.isFile && verifyFile(context, partial, checkedAsset) && matchesRelease(context, partial, version)) {
+                return finish(false)
+            }
+            if (checkedAsset.size?.let { partial.length() >= it } == true && !partial.delete()) {
+                return Download.Failed("无法清理下载缓存")
+            }
             for ((index, source) in sources.withIndex()) {
                 val mirror = source != asset.url.trim()
-                val host = if (mirror) URL(source).host else "直连 GitHub"
                 try {
-                    onStage(Stage.Connecting(mirror, index + 1, sources.size, host))
+                    val host = if (mirror) URL(source).host else "直连 GitHub"
+                    onStage(Stage.Connecting(mirror, index + 1, sources.size, host,
+                        if (saved == null) 0 else partial.length()))
                     var appended: Boolean
                     do {
                         var lastPercent = -1
                         var lastBytes = -262144L
-                        appended = transferApk(source, asset, version, partial, index < sources.lastIndex) { bytes, total ->
+                        appended = transferApk(source, checkedAsset, version, partial, index < sources.lastIndex) { bytes, total ->
                             val percent = if (total != null) (bytes * 100 / total).toInt().coerceIn(0, 100) else 0
                             if (percent != lastPercent || (total == null && bytes - lastBytes >= 262144)) {
                                 onProgress(percent)
@@ -131,24 +168,22 @@ object UpdateInstaller {
                             }
                         }
                         onStage(Stage.Verifying(mirror))
-                        if (verifyFile(context, partial, asset) && matchesRelease(context, partial, version)) {
-                            if (!partial.renameTo(target)) return Download.Failed("无法保存安装包，请检查存储空间")
-                            onProgress(100)
-                            onStage(Stage.Ready)
-                            return Download.Ready(target, mirror)
+                        if (verifyFile(context, partial, checkedAsset) && matchesRelease(context, partial, version)) {
+                            return finish(mirror)
                         }
                         // A bad prefix from the previous source must not spoil a good mirror.
                         if (!partial.delete()) return Download.Failed("无法清理下载缓存")
                         failure = "安装包的校验值、签名或版本不符，请重试"
                     } while (appended)
                 } catch (e: Exception) {
-                    if (e is InterruptedException) throw e
+                    if (e is InterruptedException || e is CancellationException) throw e
                     failure = describeDownloadError(e)
                 }
             }
-            return Download.Failed(failure)
+            val retained = if (saved == null) 0 else partial.length()
+            return Download.Failed(failure, retained)
         } finally {
-            partial.delete()
+            if (saved == null || partial.length() == 0L) partial.delete()
         }
     }
 
@@ -206,8 +241,10 @@ object UpdateInstaller {
                 digest.update(buffer, 0, read)
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return digest.digest().toHex()
     }
+
+    private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }
 
     private fun signFlags(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES

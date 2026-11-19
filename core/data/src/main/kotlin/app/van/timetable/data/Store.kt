@@ -2,11 +2,13 @@
 package app.van.timetable.data
 
 import android.content.Context
+import android.util.AtomicFile
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.*
 import app.van.timetable.domain.*
+import java.io.File
 import java.time.*
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.flow.*
@@ -41,6 +43,7 @@ class Store(private val context: Context) {
         Room.databaseBuilder(context.applicationContext, VanDatabase::class.java, "van.db").build()
     private val preferencesKey = stringPreferencesKey("preferences_v1")
     private val lock = Mutex()
+    private val snapshot = AtomicFile(File(context.filesDir, "before-restore.van.json"))
     val schedules: Flow<List<Schedule>> =
         db.schedules().observe().map { rows -> rows.map { Codec.decode(it.payload) } }
     val preferences: Flow<Preferences> =
@@ -79,14 +82,45 @@ class Store(private val context: Context) {
 
     suspend fun backup(): String = Codec.backup(Backup(schedules = all(), preferences = prefs()))
 
+    suspend fun readBackupSnapshot(): Backup = lock.withLock {
+        snapshot.openRead().bufferedReader().use { Codec.restore(it.readText()) }
+    }
+
+    private fun writeBackupSnapshot(content: String) {
+        val output = snapshot.startWrite()
+        try {
+            output.write(content.toByteArray())
+            snapshot.finishWrite(output)
+        } catch (error: Exception) {
+            snapshot.failWrite(output)
+            throw error
+        }
+        check(snapshot.openRead().bufferedReader().use { it.readText() } == content) {
+            "覆盖前快照保存失败，课表未更新"
+        }
+    }
+
+    suspend fun updateFromImport(original: Schedule, updated: Schedule, globalDays: List<DayOverride>) {
+        require(original.id == updated.id)
+        Validation.requireValid(updated)
+        lock.withLock {
+            db.withTransaction {
+                val schedules = all()
+                val preferences = prefs()
+                require(schedules.find { it.id == original.id } == original && preferences.globalDayOverrides == globalDays) {
+                    "课表或全局调休已变更，请重新核对导入差异"
+                }
+                writeBackupSnapshot(Codec.backup(Backup(schedules = schedules, preferences = preferences)))
+                save(updated)
+            }
+        }
+    }
+
     suspend fun restore(b: Backup) {
         require(b.scope == "full")
         b.schedules.forEach(Validation::requireValid)
         lock.withLock {
-            val before = backup()
-            context.openFileOutput("before-restore.van.json", Context.MODE_PRIVATE).use {
-                it.write(before.toByteArray())
-            }
+            writeBackupSnapshot(backup())
             val oldPrefs = prefs()
             db.withTransaction {
                 db.schedules().clear()

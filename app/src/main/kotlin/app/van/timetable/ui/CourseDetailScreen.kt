@@ -46,15 +46,14 @@ fun Detail(
         if (date == null) s.courseGroups().firstOrNull { it.primary.id == c.id }?.members ?: listOf(c)
         else listOf(c)
     }
-    val occurrences =
-        date
-            ?.let {
-                CourseEngine.resolveDay(s, LocalDate.parse(it)).filter {
-                    it.course.id == c.id && (sessionId == null || it.session.id == sessionId) &&
-                        (originalDate == null || CourseEngine.originalDate(it) == originalDate)
-                }
-            }
-            .orEmpty()
+    val globalDays = state.preferences.globalDayOverrides
+    val day = remember(s, date, globalDays) {
+        date?.let { CourseEngine.resolveDay(s, LocalDate.parse(it), globalDays) }.orEmpty()
+    }
+    val occurrences = day.filter {
+        it.course.id == c.id && (sessionId == null || it.session.id == sessionId) &&
+            (originalDate == null || CourseEngine.originalDate(it) == originalDate)
+    }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -195,7 +194,7 @@ fun Detail(
             }
             Muted("${o.date} ${o.start}–${o.end} · ${o.place}")
             val conflict =
-                CourseEngine.conflicts(CourseEngine.resolveDay(s, o.date)).firstOrNull { group ->
+                CourseEngine.conflicts(day).firstOrNull { group ->
                     group.size > 1 && group.any { it.id == o.id }
                 }
             if (conflict != null) {

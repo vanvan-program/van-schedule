@@ -4,6 +4,7 @@ package app.van.timetable
 import android.app.Application
 import app.van.timetable.data.Store
 import app.van.timetable.system.Scheduler
+import app.van.timetable.system.UpdateDownloads
 import app.van.timetable.widget.WidgetMonetHelper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.*
 class VanApplication : Application() {
     val store by lazy { Store(this) }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    internal val updateDownloads by lazy { UpdateDownloads(this, scope) }
     val band by lazy { app.van.timetable.band.BandSync(this) }
 
     @OptIn(FlowPreview::class)
