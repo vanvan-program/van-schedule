@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import app.van.timetable.VanApplication
 import app.van.timetable.data.Demo
 import app.van.timetable.domain.*
+import app.van.timetable.system.AppDiagnostics
 import app.van.timetable.system.DocumentSource
 import app.van.timetable.system.Scheduler
 import kotlinx.coroutines.*
@@ -43,6 +44,11 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, VanState())
     val messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    init {
+        // 后台调度失败到阈值时，把提示接到界面已有的消息出口上。
+        AppDiagnostics.observe { messages.tryEmit(it) }
+    }
     val busy = MutableStateFlow(false)
     val importData = MutableStateFlow<Backup?>(null)
     var importUpdateDraft by mutableStateOf<Schedule?>(null)
@@ -124,10 +130,11 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 Scheduler.reconcile(getApplication())
+                AppDiagnostics.recovered("widgets")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.w("VanWidgets", "课程页刷新失败", e)
+                AppDiagnostics.report("widgets", e, "课程页刷新提醒失败")
             }
         }
 

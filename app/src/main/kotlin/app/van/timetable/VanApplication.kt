@@ -3,6 +3,7 @@ package app.van.timetable
 
 import android.app.Application
 import app.van.timetable.data.Store
+import app.van.timetable.system.AppDiagnostics
 import app.van.timetable.system.Scheduler
 import app.van.timetable.system.UpdateDownloads
 import app.van.timetable.widget.WidgetMonetHelper
@@ -29,10 +30,11 @@ class VanApplication : Application() {
                     try {
                         Scheduler.reconcile(this@VanApplication)
                         band.onChanged()
+                        AppDiagnostics.recovered("auto-sync")
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        android.util.Log.w("VanWidgets", "自动同步失败，等待下次更新", e)
+                        AppDiagnostics.report("auto-sync", e, "课程提醒与小组件刷新失败")
                     }
                 }
         }
