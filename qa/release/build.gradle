@@ -33,9 +33,9 @@ android {
 }
 
 dependencies {
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.10'
-    implementation 'junit:junit:4.13.2'
-    implementation 'androidx.core:core-ktx:1.17.0'
-    implementation 'androidx.test:runner:1.7.0'
-    implementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    implementation libs.kotlin.stdlib
+    implementation libs.junit
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.test.runner
+    implementation libs.uiautomator
 }

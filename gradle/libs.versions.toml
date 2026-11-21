@@ -1,0 +1,75 @@
+# 依赖版本集中在这里，各模块只引用别名。
+# 目的：同一个坐标（compose-bom、core-ktx、kotlin-stdlib）不再分散在四五份 build 文件里。
+
+[versions]
+agp = "9.1.1"
+kotlin = "2.2.10"
+ksp = "2.3.6"
+composeBom = "2026.03.00"
+coreKtx = "1.17.0"
+lifecycle = "2.10.0"
+activityCompose = "1.12.4"
+webkit = "1.15.0"
+serialization = "1.9.0"
+coroutines = "1.10.2"
+room = "2.8.4"
+datastore = "1.2.0"
+exifinterface = "1.3.7"
+annotation = "1.9.1"
+junit = "4.13.2"
+androidxTestRunner = "1.7.0"
+androidxTestRules = "1.7.0"
+androidxTestCore = "1.7.0"
+androidxTestJunit = "1.3.0"
+espresso = "3.7.0"
+uiautomator = "2.3.0"
+jxl = "2.6.12"
+tesseract = "4.9.0"
+
+[libraries]
+# Compose：版本由 BOM 统一管理
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
+androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+jxl = { module = "net.sourceforge.jexcelapi:jxl", version.ref = "jxl" }
+tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version.ref = "tesseract" }
+
+junit = { module = "junit:junit", version.ref = "junit" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+androidx-test-rules = { module = "androidx.test:rules", version.ref = "androidxTestRules" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestJunit" }
+espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
