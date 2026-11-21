@@ -92,19 +92,7 @@ object Scheduler {
         s: Schedule,
         date: LocalDate,
         globalDayOverrides: List<DayOverride> = emptyList(),
-    ): List<Occurrence> {
-        val all = CourseEngine.resolveDay(s, date, globalDayOverrides)
-        val groups = CourseEngine.conflicts(all)
-        val excluded =
-            groups
-                .flatMap { g ->
-                    val main = CourseEngine.main(g)
-                    g.filter { it.id != main.id }
-                }
-                .map { it.id }
-                .toSet()
-        return all.filter { it.id !in excluded && it.course.reminder }
-    }
+    ): List<Occurrence> = ReminderPlan.items(s, date, globalDayOverrides)
 
     private data class Reminder(val occurrence: Occurrence, val key: String, val at: Instant)
 
@@ -173,7 +161,7 @@ object Scheduler {
             val active = p.activeScheduleId?.let { id -> store.all().firstOrNull { it.id == id } }
             val alarms = c.getSystemService(AlarmManager::class.java)
             channels(c)
-            val zone = ZoneId.of(active?.zone ?: "Asia/Shanghai")
+            val zone = ZoneId.of(active?.zone ?: DEFAULT_ZONE)
             val now = Instant.now()
             val date = now.atZone(zone).toLocalDate()
             val boundaries = mutableListOf(date.plusDays(1).atStartOfDay(zone).toInstant())
@@ -219,7 +207,7 @@ object Scheduler {
                         boundaries += o.startsAt(zone)
                         boundaries += o.endsAt(zone)
                     }
-            val next = boundaries.filter { it > now }.minOrNull() ?: return@withLock
+            val next = ReminderPlan.nextWake(now, boundaries) ?: return@withLock
             val intent = Intent(c, AlarmReceiver::class.java).putExtra("at", next.toEpochMilli())
             val pi =
                 PendingIntent.getBroadcast(
