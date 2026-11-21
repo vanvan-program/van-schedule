@@ -76,15 +76,15 @@ object Files {
         )
     }
 
-    private fun safeName(name: String) =
-        name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(60).ifBlank { "课表" }
+    private fun safeName(name: String) =        name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(60).ifBlank { "课表" }
 
     fun image(s: Schedule, week: Int, dark: Boolean, teachers: Boolean): ByteArray {
-        val monday = LocalDate.parse(s.week1Monday).plusWeeks((week - 1).toLong())
+        val monday = CourseEngine.mondayOf(s, week)
         val cols = (0..6).map { d -> CourseEngine.timetableDay(s, monday.plusDays(d.toLong())) }
         val maxRows = maxOf(1, cols.maxOf { it.size })
         val width = 1400
-        val height = 200 + maxRows * 220
+        // 高度随课数线性增长；加上限，避免一天几十节时单张位图占几百 MB。
+        val height = minOf(200 + maxRows * 220, 6000)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.parseColor(if (dark) "#111A2A" else "#F8F9FE"))

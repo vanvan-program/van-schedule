@@ -154,7 +154,7 @@ internal fun WeekGrid(
     onDragCancel: () -> Unit = {},
     onDaySelected: (LocalDate) -> Unit,
 ) {
-    val monday = remember(s.week1Monday, week) { LocalDate.parse(s.week1Monday).plusWeeks((week - 1).toLong()) }
+    val monday = remember(s.week1Monday, week) { CourseEngine.mondayOf(s, week) }
     val colors = LocalVan.current
     val days = if (p.showWeekend) 7 else 5
     val gridScroll = rememberScrollState()

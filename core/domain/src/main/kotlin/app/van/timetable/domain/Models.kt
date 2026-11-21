@@ -7,6 +7,12 @@ import kotlinx.serialization.Serializable
 
 fun newId(): String = UUID.randomUUID().toString()
 
+/**
+ * 默认时区。课表没写 zone 时用它，各处兜底也统一引用这里，
+ * 避免同一个字面量散在九个文件里、改一处漏一处。
+ */
+const val DEFAULT_ZONE = "Asia/Shanghai"
+
 enum class TimeMode {
     SECTIONS,
     CLOCK,
@@ -95,7 +101,7 @@ data class Schedule(
     val school: String = "",
     val week1Monday: String,
     val maxWeeks: Int = 20,
-    val zone: String = "Asia/Shanghai",
+    val zone: String = DEFAULT_ZONE,
     val source: String = "手动创建",
     val importedAt: Long = System.currentTimeMillis(),
     val courses: List<Course> = emptyList(),

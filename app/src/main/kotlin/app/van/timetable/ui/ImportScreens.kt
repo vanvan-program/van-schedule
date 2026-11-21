@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.dp
 import app.van.timetable.domain.*
 import app.van.timetable.school.schoolAddress
 import java.time.LocalDate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ImportEntry(selectFile: () -> Unit, nav: (String) -> Unit) {
@@ -145,17 +147,21 @@ fun ImportPreview(
         Field(monday, { monday = it }, "第1周周一 YYYY-MM-DD")
         Field(weeks, { weeks = it }, "总周数")
         Field(routineText, { routineText = it }, "作息（节次,开始时间,结束时间）", multi = true)
-        val conflicts =
-            remember(s) {
-                (0 until s.maxWeeks * 7).sumOf { d ->
-                    CourseEngine.conflicts(
-                            CourseEngine.resolveDay(
-                                s,
-                                LocalDate.parse(s.week1Monday).plusDays(d.toLong()),
-                            )
-                        )
-                        .size
-                }
+        // 冲突检查要遍历整学期（默认 20 周 × 7 天），放到后台算，先出页面再补数字。
+        val conflicts by
+            produceState(initialValue = 0, s) {
+                value =
+                    withContext(Dispatchers.Default) {
+                        (0 until s.maxWeeks * 7).sumOf { d ->
+                            CourseEngine.conflicts(
+                                    CourseEngine.resolveDay(
+                                        s,
+                                        LocalDate.parse(s.week1Monday).plusDays(d.toLong()),
+                                    )
+                                )
+                                .size
+                        }
+                    }
             }
         Panel {
             Text("冲突检查：${if(conflicts==0)"未发现"else"$conflicts 处，全部保留"}")

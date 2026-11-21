@@ -37,6 +37,10 @@ object CourseEngine {
             ?: schedule.activeRoutineId?.let { id -> schedule.routines.firstOrNull { it.id == id } }
             ?: schedule.routines.first()
 
+    /** 某周周一的日期。不校验周次范围，需要校验时用 [dateAt]。 */
+    fun mondayOf(schedule: Schedule, week: Int): LocalDate =
+        LocalDate.parse(schedule.week1Monday).plusWeeks((week - 1).toLong())
+
     fun dateAt(schedule: Schedule, week: Int, day: Int): LocalDate {
         require(week in 1..schedule.maxWeeks) { "周次必须在1–${schedule.maxWeeks}之间" }
         require(day in 1..7) { "星期必须在1–7之间" }
@@ -509,36 +513,49 @@ object CourseEngine {
 }
 
 object Validation {
-    fun errors(s: Schedule): List<String> = buildList {
-        fun check(ok: Boolean, message: String) {
-            if (!ok) add(message)
-        }
+    fun errors(s: Schedule): List<String> =
+        checkHeader(s) +
+            checkCoursesAndRoutines(s) +
+            checkSessions(s) +
+            checkRoutineRules(s) +
+            checkCalendar(s)
+
+    private fun MutableList<String>.expect(ok: Boolean, message: String) {
+        if (!ok) add(message)
+    }
+
+    /** 课表本身：第 1 周起点、名称、总周数、时区。 */
+    private fun checkHeader(s: Schedule): List<String> = buildList {
         val start = runCatching { LocalDate.parse(s.week1Monday) }.getOrNull()
-        check(start != null && start.dayOfWeek == DayOfWeek.MONDAY, "第1周起点必须是周一")
-        check(s.name.isNotBlank(), "课表名称不能为空")
-        check(s.maxWeeks > 0, "总周数必须大于0")
-        check(runCatching { ZoneId.of(s.zone) }.isSuccess, "课表时区无效")
-        check(s.routines.isNotEmpty(), "至少需要一套作息")
-        check(s.courses.map { it.id }.distinct().size == s.courses.size, "课程ID重复")
-        check(s.sessions.map { it.id }.distinct().size == s.sessions.size, "时段ID重复")
+        expect(start != null && start.dayOfWeek == DayOfWeek.MONDAY, "第1周起点必须是周一")
+        expect(s.name.isNotBlank(), "课表名称不能为空")
+        expect(s.maxWeeks > 0, "总周数必须大于0")
+        expect(runCatching { ZoneId.of(s.zone) }.isSuccess, "课表时区无效")
+    }
+
+    /** 课程与作息：ID 唯一性、课程字段、作息节次的连续与时间先后。 */
+    private fun checkCoursesAndRoutines(s: Schedule): List<String> = buildList {
+        expect(s.routines.isNotEmpty(), "至少需要一套作息")
+        expect(s.courses.map { it.id }.distinct().size == s.courses.size, "课程ID重复")
+        expect(s.sessions.map { it.id }.distinct().size == s.sessions.size, "时段ID重复")
         s.courses.forEach {
-            check(it.name.isNotBlank(), "课程名称不能为空")
-            check(it.color in CoursePalette.light.indices, "课程配色无效")
-            check(
+            expect(it.name.isNotBlank(), "课程名称不能为空")
+            expect(it.color in CoursePalette.light.indices, "课程配色无效")
+            expect(
                 it.customColor == null || it.customColor in 0xFF000000..0xFFFFFFFF,
                 "自定义颜色必须为不透明颜色",
             )
-            check(it.leadMinutes == null || it.leadMinutes in 0..1440, "提醒提前量无效")
-            check(it.weekNotes.keys.all { w -> w in 1..s.maxWeeks }, "按周备注周次超出学期")
+            expect(it.leadMinutes == null || it.leadMinutes in 0..1440, "提醒提前量无效")
+            expect(it.weekNotes.keys.all { w -> w in 1..s.maxWeeks }, "按周备注周次超出学期")
         }
-        check(
+        expect(
             s.activeRoutineId == null || s.routines.any { it.id == s.activeRoutineId },
             "默认作息关联不存在",
         )
-        check(s.routines.map { it.id }.distinct().size == s.routines.size, "作息ID重复")
+        expect(s.routines.map { it.id }.distinct().size == s.routines.size, "作息ID重复")
         s.routines.forEach { r ->
-            check(r.sections.isNotEmpty(), "${r.name}作息为空")
-            check(
+            expect(r.sections.isNotEmpty(), "${r.name}作息为空")
+            expect(
                 r.sections.map { it.number }.sorted() == (1..r.sections.size).toList(),
                 "${r.name}节次必须连续且唯一",
             )
@@ -548,29 +565,33 @@ object Validation {
                 .forEach { n ->
                     val a = runCatching { LocalTime.parse(n.start) }.getOrNull()
                     val b = runCatching { LocalTime.parse(n.end) }.getOrNull()
-                    check(a != null && b != null && a < b, "第${n.number}节起止时间无效")
-                    if (a != null && previous != null) check(a >= previous, "作息时间发生重叠")
+                    expect(a != null && b != null && a < b, "第${n.number}节起止时间无效")
+                    if (a != null && previous != null) expect(a >= previous, "作息时间发生重叠")
                     previous = b
                 }
         }
+    }
+
+    /** 时段：关联课程存在、星期范围、周次、按三种时间模式校验起止。 */
+    private fun checkSessions(s: Schedule): List<String> = buildList {
         s.sessions.forEach { n ->
-            check(s.courses.any { it.id == n.courseId }, "时段关联的课程不存在")
-            check(n.day in 1..7 || (n.mode == TimeMode.UNTIMED && n.day == 0), "星期超出范围")
-            check(
+            expect(s.courses.any { it.id == n.courseId }, "时段关联的课程不存在")
+            expect(n.day in 1..7 || (n.mode == TimeMode.UNTIMED && n.day == 0), "星期超出范围")
+            expect(
                 n.date != null || (n.weeks.isNotEmpty() && n.weeks.all { it in 1..s.maxWeeks }),
                 "上课周次为空或超出学期",
             )
-            check(n.date == null || runCatching { LocalDate.parse(n.date) }.isSuccess, "单次课程日期无效")
+            expect(n.date == null || runCatching { LocalDate.parse(n.date) }.isSuccess, "单次课程日期无效")
             when (n.mode) {
                 TimeMode.SECTIONS ->
-                    check(
+                    expect(
                         n.startSection > 0 &&
                             n.endSection >= n.startSection &&
                             s.routines.all { r -> n.endSection <= r.sections.size },
                         "课程节次超出作息范围",
                     )
                 TimeMode.CLOCK ->
-                    check(
+                    expect(
                         runCatching { LocalTime.parse(n.start) < LocalTime.parse(n.end) }
                             .getOrDefault(false),
                         "课程起止时间无效",
@@ -578,9 +599,13 @@ object Validation {
                 TimeMode.UNTIMED -> Unit
             }
         }
+    }
+
+    /** 作息生效规则：关联存在、日期有效、两两日期不重叠。 */
+    private fun checkRoutineRules(s: Schedule): List<String> = buildList {
         s.routineRules.forEach { r ->
-            check(s.routines.any { it.id == r.routineId }, "作息规则关联不存在")
-            check(
+            expect(s.routines.any { it.id == r.routineId }, "作息规则关联不存在")
+            expect(
                 runCatching { LocalDate.parse(r.from) <= LocalDate.parse(r.through) }
                     .getOrDefault(false),
                 "作息生效日期无效",
@@ -588,14 +613,18 @@ object Validation {
         }
         s.routineRules.forEachIndexed { i, a ->
             s.routineRules.drop(i + 1).forEach { b ->
-                check(!(a.from <= b.through && b.from <= a.through), "作息规则日期重叠")
+                expect(!(a.from <= b.through && b.from <= a.through), "作息规则日期重叠")
             }
         }
-        check(s.dayOverrides.map { it.date }.distinct().size == s.dayOverrides.size, "同一天有多个整日安排")
-        check(s.holidays.map { it.id }.distinct().size == s.holidays.size, "假期ID重复")
+    }
+
+    /** 日历：整日调整、假期、单次调课。 */
+    private fun checkCalendar(s: Schedule): List<String> = buildList {
+        expect(s.dayOverrides.map { it.date }.distinct().size == s.dayOverrides.size, "同一天有多个整日安排")
+        expect(s.holidays.map { it.id }.distinct().size == s.holidays.size, "假期ID重复")
         s.holidays.forEach { holiday ->
-            check(holiday.name.isNotBlank(), "假期名称不能为空")
-            check(
+            expect(holiday.name.isNotBlank(), "假期名称不能为空")
+            expect(
                 runCatching {
                         LocalDate.parse(holiday.from) <= LocalDate.parse(holiday.through)
                     }
@@ -604,7 +633,7 @@ object Validation {
             )
         }
         s.dayOverrides.forEach { d ->
-            check(
+            expect(
                 runCatching {
                         LocalDate.parse(d.date)
                         d.sourceDate?.let { LocalDate.parse(it) }
@@ -613,14 +642,14 @@ object Validation {
                 "整日调整日期无效",
             )
         }
-        check(
+        expect(
             s.sessionOverrides.map { it.sessionId to it.originalDate }.distinct().size ==
                 s.sessionOverrides.size,
             "同一课程重复调整",
         )
         s.sessionOverrides.forEach { o ->
-            check(s.sessions.any { it.id == o.sessionId }, "调课关联的时段不存在")
-            check(
+            expect(s.sessions.any { it.id == o.sessionId }, "调课关联的时段不存在")
+            expect(
                 runCatching {
                         LocalDate.parse(o.originalDate)
                         o.targetDate?.let { LocalDate.parse(it) }
@@ -628,9 +657,9 @@ object Validation {
                     .isSuccess,
                 "单次调整日期无效",
             )
-            check((o.start == null) == (o.end == null), "调整时间需同时填写起止")
+            expect((o.start == null) == (o.end == null), "调整时间需同时填写起止")
             if (o.start != null)
-                check(
+                expect(
                     runCatching { LocalTime.parse(o.start) < LocalTime.parse(o.end) }
                         .getOrDefault(false),
                     "调整起止时间无效",

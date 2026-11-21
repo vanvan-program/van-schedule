@@ -151,7 +151,7 @@ class Store(private val context: Context) {
 object Demo {
     fun schedule(): Schedule {
         val monday =
-            LocalDate.now(ZoneId.of("Asia/Shanghai"))
+            LocalDate.now(ZoneId.of(DEFAULT_ZONE))
                 .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
                 .minusWeeks(5)
         val names = listOf("大数据技术", "操作系统", "数据库原理", "Java程序设计", "汇编语言程序设计")

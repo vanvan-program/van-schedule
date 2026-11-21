@@ -161,7 +161,7 @@ fun CourseRow(
     o: Occurrence,
     now: Instant,
     onClick: () -> Unit,
-    zone: ZoneId = ZoneId.of("Asia/Shanghai"),
+    zone: ZoneId = ZoneId.of(DEFAULT_ZONE),
     conflict: Boolean = false,
     inactive: Boolean = false,
     pastel: Boolean = true,
@@ -233,7 +233,7 @@ fun CourseRow(
 }
 
 fun mondayNow(): LocalDate =
-    LocalDate.now(ZoneId.of("Asia/Shanghai"))
+    LocalDate.now(ZoneId.of(DEFAULT_ZONE))
         .with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
 val weekdays = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")

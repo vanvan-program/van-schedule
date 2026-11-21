@@ -95,8 +95,7 @@ fun Detail(
                 memberSessions.forEachIndexed { index, n ->
                     if (index > 0) HorizontalDivider()
                     Text(n.date ?: if (n.day in 1..7) weekdays[n.day - 1] else "整周实践", fontWeight = FontWeight.Medium)
-                    Muted(if (n.mode == TimeMode.SECTIONS) "第${n.startSection}–${n.endSection}节"
-                        else if (n.mode == TimeMode.CLOCK) "${n.start}–${n.end}" else "无固定时间")
+                    Muted(n.timeLabel())
                     if (n.date == null) Muted("周次：${formatWeeks(n.weeks)}")
                     Muted(listOf(n.teacher, n.place).filter { it.isNotBlank() }.joinToString(" · "))
                 }

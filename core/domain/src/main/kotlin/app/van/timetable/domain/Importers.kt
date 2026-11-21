@@ -146,7 +146,7 @@ object Importers {
         require(rows.size > 1 && rows.first().map { it.trim() } == headers) {
             "CSV必须包含正式七列标题：${headers.joinToString(",")}"
         }
-        val courses = mutableListOf<Course>()
+        val courses = CourseAccumulator()
         val sessions = mutableListOf<CourseSession>()
         val errors = mutableListOf<String>()
         rows.drop(1).forEachIndexed { i, row ->
@@ -154,9 +154,7 @@ object Importers {
                     require(row.size == 7) { "应为7列" }
                     val r = row.map { it.trim() }
                     require(r[0].isNotBlank()) { "课程名称为空" }
-                    val course =
-                        courses.firstOrNull { it.name == r[0] }
-                            ?: Course(name = r[0], color = courses.size % 5).also(courses::add)
+                    val course = courses.get(r[0])
                     sessions +=
                         CourseSession(
                             courseId = course.id,
@@ -179,7 +177,7 @@ object Importers {
                 week1Monday = monday.toString(),
                 maxWeeks = maxOf(20, sessions.flatMap { it.weeks }.maxOrNull() ?: 20),
                 source = "WakeUp CSV",
-                courses = courses,
+                courses = courses.snapshot(),
                 sessions =
                     sessions.distinctBy {
                         listOf(
@@ -233,7 +231,7 @@ object Importers {
             val c =
                 Course(
                     name = b.string("courseName"),
-                    color = i % 5,
+                    color = i % CoursePalette.size,
                     credit = b.string("credit"),
                     note = b.string("note"),
                 )
@@ -353,15 +351,13 @@ object Importers {
         val rows = root["courses"]?.jsonArray ?: error("教务解析没有返回课程")
         val extraText = root.string("extraCoursesText")
         require(rows.isNotEmpty() || extraText.isNotBlank()) { "未获取到课程，请先进入所选学期的个人课表页面" }
-        val courses = mutableListOf<Course>()
+        val courses = CourseAccumulator()
         val sessions =
             rows
                 .map { element ->
                     val r = element.jsonObject
                     val name = r.string("name")
-                    val course =
-                        courses.firstOrNull { it.name == name }
-                            ?: Course(name = name, color = courses.size % 5).also(courses::add)
+                    val course = courses.get(name)
                     val weeks =
                         r["weeks"]?.jsonArray?.map { it.jsonPrimitive.int }?.toSet()
                             ?: weeks(r.string("weeksText"))
@@ -379,16 +375,9 @@ object Importers {
                     )
                 }
                 .toMutableList()
-        val extraRows = DocumentImport.footerRows(extraText, courses.map { it.name }, strict = true)
+        val extraRows = DocumentImport.footerRows(extraText, courses.names(), strict = true)
         for (row in extraRows) {
-            val course =
-                courses.firstOrNull { it.name == row.name }
-                    ?: Course(
-                            name = row.name,
-                            color = courses.size % CoursePalette.size,
-                            note = "无固定上课时间",
-                        )
-                        .also(courses::add)
+            val course = courses.get(row.name, note = "无固定上课时间")
             sessions +=
                 CourseSession(
                     courseId = course.id,
@@ -415,7 +404,7 @@ object Importers {
                 week1Monday = monday.toString(),
                 maxWeeks = maxOf(20, sessions.flatMap { it.weeks }.max()),
                 source = "教务导入",
-                courses = courses,
+                courses = courses.snapshot(),
                 sessions = sessions,
                 routines = listOf(TimeRoutine(name = "教务作息", sections = sections)),
             )

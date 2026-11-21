@@ -19,7 +19,7 @@ import kotlinx.serialization.json.Json
 )
 @Serializable data class BandSnapshot(
     val format: String = "vanband", val version: Int = 1,
-    val scheduleId: String = "", val scheduleName: String = "", val zone: String = "Asia/Shanghai",
+    val scheduleId: String = "", val scheduleName: String = "", val zone: String = DEFAULT_ZONE,
     val generatedAt: Long, val from: String = "", val through: String = "", val syncedLabel: String = "",
     val cleared: Boolean = false, val probe: Boolean = false,
     val days: List<BandDay> = emptyList(),

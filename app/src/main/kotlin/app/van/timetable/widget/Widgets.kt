@@ -119,7 +119,7 @@ object Widgets {
         val tiny = widgetHeight <= 100
         val text = monet?.title ?: Color.parseColor(if (dark) "#ECECF3" else "#252635")
         val secondary = monet?.secondary ?: Color.parseColor(if (dark) "#B3B3C2" else "#737583")
-        val zone = ZoneId.of(s?.zone ?: "Asia/Shanghai")
+        val zone = ZoneId.of(s?.zone ?: DEFAULT_ZONE)
         val today = now.atZone(zone).toLocalDate()
         val view =
             RemoteViews(
@@ -427,7 +427,7 @@ object Widgets {
                 )
                 setTextViewText(
                     R.id.item_time,
-                    "${o.start} – ${o.end}",
+                    "${o.start}–${o.end}",
                 )
                 setContentDescription(
                     R.id.item_root,
@@ -523,7 +523,7 @@ class CourseListService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory =
         object : RemoteViewsFactory {
             var list = emptyList<Occurrence>()
-            var zone = ZoneId.of("Asia/Shanghai")
+            var zone = ZoneId.of(DEFAULT_ZONE)
             var dark = false
             var compact = true
             var tiny = false
@@ -549,7 +549,7 @@ class CourseListService : RemoteViewsService() {
                     compact = widgetHeight < 140 || resources.configuration.fontScale > 1.15f
                     tiny = widgetHeight <= 100
                     spacious = widgetHeight >= 180
-                    zone = ZoneId.of(s?.zone ?: "Asia/Shanghai")
+                    zone = ZoneId.of(s?.zone ?: DEFAULT_ZONE)
                     list =
                         if (s == null) emptyList()
                         else if (column == "tomorrow")

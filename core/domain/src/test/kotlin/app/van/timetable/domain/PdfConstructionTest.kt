@@ -5,7 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.util.zip.Deflater
 import org.junit.Test
 
-class TempDebugPdfTest {
+class PdfConstructionTest {
     private fun flate(text: String): ByteArray {
         val deflater = Deflater()
         deflater.setInput(text.toByteArray(Charsets.ISO_8859_1))

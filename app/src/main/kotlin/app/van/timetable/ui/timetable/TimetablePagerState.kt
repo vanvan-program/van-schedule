@@ -77,7 +77,7 @@ internal class TimetablePagerState(
 
     /** 当前周的周一。 */
     val monday: LocalDate
-        get() = LocalDate.parse(schedule.week1Monday).plusWeeks((week - 1).toLong())
+        get() = CourseEngine.mondayOf(schedule, week)
 
     /** 顶栏与日列表标题显示的日期。 */
     val selectedDate: String
