@@ -3,6 +3,7 @@ package app.van.timetable.data
 
 import android.content.Context
 import android.util.AtomicFile
+import android.util.Log
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -38,6 +39,8 @@ abstract class VanDatabase : RoomDatabase() {
 
 private val Context.settings by preferencesDataStore("van_settings")
 
+private const val TAG = "Store"
+
 class Store(private val context: Context) {
     private val db =
         Room.databaseBuilder(context.applicationContext, VanDatabase::class.java, "van.db").build()
@@ -45,7 +48,18 @@ class Store(private val context: Context) {
     private val lock = Mutex()
     private val snapshot = AtomicFile(File(context.filesDir, "before-restore.van.json"))
     val schedules: Flow<List<Schedule>> =
-        db.schedules().observe().map { rows -> rows.map { Codec.decode(it.payload) } }
+        db.schedules().observe().map { rows -> rows.mapNotNull(::decodeRow) }
+
+    /**
+     * 逐行解码：某一行 payload 损坏（升级残留、手动改库）时只跳过那一行，
+     * 不让整个列表抛异常、把用户所有课表都变成空白。
+     * 严格版本见 [all]：备份与导出应该失败即失败，不能静默少数据。
+     */
+    private fun decodeRow(row: ScheduleRecord): Schedule? =
+        runCatching { Codec.decode(row.payload) }
+            .onFailure { Log.w(TAG, "课表记录 ${row.id} 解码失败，已跳过该条", it) }
+            .getOrNull()
+
     val preferences: Flow<Preferences> =
         context.settings.data.map { p ->
             p[preferencesKey]?.let { Codec.json.decodeFromString(Preferences.serializer(), it) }
