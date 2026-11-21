@@ -123,7 +123,7 @@ class SchoolActivity : ComponentActivity() {
                                 settings.allowFileAccess = false
                                 settings.allowContentAccess = false
                                 settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                                if (Build.VERSION.SDK_INT >= 26) settings.safeBrowsingEnabled = true
+                                settings.safeBrowsingEnabled = true
                                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                                 webChromeClient =
                                     object : WebChromeClient() {

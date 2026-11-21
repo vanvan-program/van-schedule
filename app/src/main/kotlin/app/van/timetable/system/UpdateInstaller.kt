@@ -76,9 +76,9 @@ object UpdateInstaller {
 
     private fun transferDirectory(context: Context): File = File(context.cacheDir, "update-transfers")
 
-    /** 是否允许安装未知来源应用；Android 8 起需要用户按应用单独授权。 */
+    /** 是否允许安装未知来源应用；Android 8 起需要用户按应用单独授权（minSdk 26，无需再判断版本）。 */
     fun canInstall(context: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+        context.packageManager.canRequestPackageInstalls()
 
     /** 跳到系统的「安装未知应用」授权页。 */
     fun openInstallSettings(context: Context): Boolean =

@@ -70,6 +70,30 @@ android {
     }
 }
 
+// 只在真的要出 release 包时检查前置条件，debug 构建与 :core:domain 测试不受影响。
+// 缺 AAR 是硬编译错误、缺签名会静默产出未签名包，两者都让失败原因指向文档而不是一堆符号缺失。
+def wearableAar = file('libs/xms-wearable-lib_1.4_release.aar')
+def allowUnsignedRelease = providers.gradleProperty('vanAllowUnsignedRelease').getOrElse('false').toBoolean()
+def unsignedReleaseMissing = !originalSigningFile.exists()
+def modulePath = project.path
+
+gradle.taskGraph.whenReady { graph ->
+    def buildsRelease = graph.allTasks.any { task ->
+        task.project.path == modulePath &&
+            (task.name.startsWith('assembleRelease') || task.name.startsWith('bundleRelease'))
+    }
+    if (!buildsRelease) { return }
+    if (!wearableAar.exists()) {
+        throw new GradleException(
+            "缺少 app/libs/${wearableAar.name}。该 AAR 不随源码分发，取得方式与校验值见 app/libs/README.md。")
+    }
+    if (unsignedReleaseMissing && !allowUnsignedRelease) {
+        throw new GradleException(
+            '缺少 signing.properties，release 包会没有签名，覆盖升级会因此断掉。' +
+            '请恢复 signing.properties 与密钥；确实要打未签名包请显式用 -PvanAllowUnsignedRelease=true。')
+    }
+}
+
 dependencies {
     implementation files('libs/xms-wearable-lib_1.4_release.aar')
     implementation project(':core:data')
@@ -83,6 +107,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.10.0'
     implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
     implementation 'androidx.webkit:webkit:1.15.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'

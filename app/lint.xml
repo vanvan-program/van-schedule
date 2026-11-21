@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    lint 配置：只对已经评估过的告警类别表态，其余保持 AGP 默认。
+    原则是「要么修，要么写明为什么忽略」，不往 baseline 里塞。
+
+    2026-11-21 基线：88 warning / 0 error（app/build/reports/lint-results-debug.txt）。
+-->
+<lint>
+
+    <!--
+        本项目是单语言产品，界面文案直接写在 Compose 代码里，资源文件只登记小组件描述。
+        抽到 strings.xml 的收益是「文案可交付非开发校对」，目前没有这个需求；
+        真要支持多语言时再统一处理，避免现在四处留下半套资源。
+    -->
+    <issue id="HardcodedText" severity="ignore" />
+
+    <!--
+        UseKtx 是「可以用 KTX 扩展替代」的风格建议，命中 41 处，集中在
+        preferences / bundle / view 的取值写法上。改写面大、行为零变化，暂不处理。
+    -->
+    <issue id="UseKtx" severity="ignore" />
+
+    <!--
+        以下两类保持默认 warning，不忽略：
+        - SmallSp：字号过小会影响可读性，逐条判断是否真需要。
+        - ObsoleteSdkInt：minSdk 26 下恒真/恒假的判断属于死代码。
+          2026-11-21 已修掉两处（SchoolActivity 的 safeBrowsingEnabled 判断、UpdateInstaller.canInstall），
+          今后出现同类告警说明又写了多余版本判断，应当直接删。
+    -->
+
+</lint>
