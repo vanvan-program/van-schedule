@@ -72,6 +72,8 @@ object UpdateChecker {
             try {
                 val release = UpdateCheck.parseLatestReleaseJson(read(url, "application/vnd.github+json", currentVersion)) ?: continue
                 if (url == mirrorApi) {
+                    // A cached mirror version cannot establish that the installed version is current.
+                    if (!UpdateCheck.isNewer(release.version, currentVersion)) continue
                     // Only follow this repository's canonical links from mirrored metadata.
                     if (release.pageUrl != "$RELEASES_URL/tag/${release.tag}") continue
                     val asset = release.apk ?: continue

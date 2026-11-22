@@ -37,6 +37,30 @@ class UpdateSourcesTest {
         }
     }
 
+    @Test fun cachedMirrorDoesNotHideNewerOfficialRelease() {
+        for (cachedTag in listOf("v1.1.0", "v1.0.0")) {
+            val urls = mutableListOf<String>()
+            val release = UpdateChecker.latestRelease("1.1.0", UpdateCheck.DEFAULT_MIRROR, { url, _, _ ->
+                urls += url
+                if (url.startsWith("https://gh-proxy.com/")) meta.replace("v1.2.0", cachedTag) else meta
+            }, { error("should not reach the page") })
+
+            assertEquals("1.2.0", release.version)
+            assertEquals(2, urls.size)
+            assertEquals("https://gh-proxy.com/" + urls.last(), urls.first())
+        }
+    }
+
+    @Test fun cachedMirrorStillAllowsOfficialPageFallbackAfterApiFailure() {
+        val release = UpdateChecker.latestRelease("1.1.0", "auto", { url, _, _ ->
+            if (url.startsWith("https://gh-proxy.com/")) meta.replace("v1.2.0", "v1.1.0")
+            else throw IOException("API unavailable")
+        }, { "$page/tag/v1.2.0" })
+
+        assertEquals("1.2.0", release.version)
+        assertEquals("$page/download/v1.2.0/van-schedule-1.2.0-arm64.apk", release.apk?.url)
+    }
+
     @Test fun lateSlowdownIsDetectedEvenAfterAFastStartAndWithoutContentLength() {
         val window = DownloadSpeedWindow(0, 0)
         assertFalse(window.isSlow(8_000, 7_000_000))
