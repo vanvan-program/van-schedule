@@ -155,7 +155,7 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
         )
 
     fun courseNote(scheduleId: String, courseId: String, note: String, after: () -> Unit) = work {
-        val current = store.all().firstOrNull { it.id == scheduleId }
+        val current = store.find(scheduleId)
             ?: error("课表已不存在，请返回课表页")
         require(current.courses.any { it.id == courseId }) { "课程已不存在，请返回课表页" }
         store.save(current.copy(courses = current.courses.map {

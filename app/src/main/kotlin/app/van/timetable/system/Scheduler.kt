@@ -158,7 +158,7 @@ object Scheduler {
         mutex.withLock {
             val store = app(c).store
             val p = store.prefs()
-            val active = p.activeScheduleId?.let { id -> store.all().firstOrNull { it.id == id } }
+            val active = p.activeScheduleId?.let { store.find(it) }
             val alarms = c.getSystemService(AlarmManager::class.java)
             channels(c)
             val zone = ZoneId.of(active?.zone ?: DEFAULT_ZONE)
@@ -230,6 +230,17 @@ object Scheduler {
             Widgets.updateAll(c, now)
         }
     }
+
+    internal suspend fun reconcileFromReceiver(c: Context, source: String, eventTime: Long? = null) {
+        try {
+            reconcile(c, eventTime)
+            AppDiagnostics.recovered(source)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppDiagnostics.report(source, e, "课程提醒与小组件刷新失败")
+        }
+    }
 }
 
 class AlarmReceiver : BroadcastReceiver() {
@@ -237,7 +248,8 @@ class AlarmReceiver : BroadcastReceiver() {
         val pending = goAsync()
         (c.applicationContext as VanApplication).scope.launch {
             try {
-                Scheduler.reconcile(c, i.getLongExtra("at", 0).takeIf { it > 0 })
+                val eventTime = i.getLongExtra("at", 0).takeIf { it > 0 }
+                Scheduler.reconcileFromReceiver(c, "alarm", eventTime)
             } finally {
                 pending.finish()
             }
@@ -261,7 +273,7 @@ class ReconcileReceiver : BroadcastReceiver() {
         val pending = goAsync()
         (c.applicationContext as VanApplication).scope.launch {
             try {
-                Scheduler.reconcile(c)
+                Scheduler.reconcileFromReceiver(c, "system-sync")
             } finally {
                 pending.finish()
             }

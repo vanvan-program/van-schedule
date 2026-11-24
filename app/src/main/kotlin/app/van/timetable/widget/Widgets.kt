@@ -60,7 +60,7 @@ object Widgets {
         val selected =
             c.getSharedPreferences("widgets", Context.MODE_PRIVATE).getString("schedule_$id", null)
         return if (selected.isNullOrBlank()) store.active()
-        else store.all().firstOrNull { it.id == selected }
+        else store.find(selected)
     }
 
     private val classes =
@@ -476,7 +476,7 @@ open class VanWidget : AppWidgetProvider() {
         val pending = goAsync()
         (c.applicationContext as VanApplication).scope.launch {
             try {
-                Scheduler.reconcile(c)
+                Scheduler.reconcileFromReceiver(c, "widget-sync")
             } finally {
                 pending.finish()
             }

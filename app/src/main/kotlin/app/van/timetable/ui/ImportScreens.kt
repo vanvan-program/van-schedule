@@ -13,6 +13,7 @@ import app.van.timetable.domain.*
 import app.van.timetable.school.schoolAddress
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -147,24 +148,25 @@ fun ImportPreview(
         Field(monday, { monday = it }, "第1周周一 YYYY-MM-DD")
         Field(weeks, { weeks = it }, "总周数")
         Field(routineText, { routineText = it }, "作息（节次,开始时间,结束时间）", multi = true)
-        // 冲突检查要遍历整学期（默认 20 周 × 7 天），放到后台算，先出页面再补数字。
-        val conflicts by
-            produceState(initialValue = 0, s) {
-                value =
-                    withContext(Dispatchers.Default) {
-                        (0 until s.maxWeeks * 7).sumOf { d ->
-                            CourseEngine.conflicts(
-                                    CourseEngine.resolveDay(
-                                        s,
-                                        LocalDate.parse(s.week1Monday).plusDays(d.toLong()),
-                                    )
-                                )
-                                .size
-                        }
-                    }
+        var conflicts by remember(s) { mutableStateOf<Int?>(null) }
+        LaunchedEffect(s) {
+            conflicts = withContext(Dispatchers.Default) {
+                val firstMonday = LocalDate.parse(s.week1Monday)
+                (0 until s.maxWeeks * 7).sumOf { day ->
+                    ensureActive()
+                    val courses = CourseEngine.resolveDay(s, firstMonday.plusDays(day.toLong()))
+                    CourseEngine.conflicts(courses).size
+                }
             }
+        }
         Panel {
-            Text("冲突检查：${if(conflicts==0)"未发现"else"$conflicts 处，全部保留"}")
+            Text(
+                when (val count = conflicts) {
+                    null -> "正在检查课程冲突…"
+                    0 -> "冲突检查：未发现"
+                    else -> "冲突检查：$count 处，全部保留"
+                }
+            )
             Muted("同时间课程保存后可在日列表查看和选择提醒。")
         }
         Panel {

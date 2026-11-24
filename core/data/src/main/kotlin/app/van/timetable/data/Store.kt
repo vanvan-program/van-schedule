@@ -25,6 +25,8 @@ interface ScheduleDao {
 
     @Query("SELECT * FROM schedules ORDER BY rowid") suspend fun all(): List<ScheduleRecord>
 
+    @Query("SELECT * FROM schedules WHERE id = :id") suspend fun find(id: String): ScheduleRecord?
+
     @Upsert suspend fun put(record: ScheduleRecord)
 
     @Query("DELETE FROM schedules WHERE id=:id") suspend fun delete(id: String)
@@ -67,6 +69,9 @@ class Store(private val context: Context) {
         }
 
     suspend fun all(): List<Schedule> = db.schedules().all().map { Codec.decode(it.payload) }
+
+    /** 只读取指定课表。课表不存在或该条记录无法解码时返回 null。 */
+    suspend fun find(id: String): Schedule? = db.schedules().find(id)?.let(::decodeRow)
 
     suspend fun prefs(): Preferences = preferences.first()
 
@@ -157,8 +162,8 @@ class Store(private val context: Context) {
     }
 
     suspend fun active(): Schedule? {
-        val p = prefs()
-        return all().firstOrNull { it.id == p.activeScheduleId }
+        val id = prefs().activeScheduleId ?: return null
+        return find(id)
     }
 }
 
