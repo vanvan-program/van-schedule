@@ -1,144 +1,148 @@
-﻿<#
+<#
 .SYNOPSIS
-    van课表 发版脚本：同步版本号、构建、生成校验文件、归档产物、打本地 tag。
+    从已提交的版本构建 APK、导出源码 ZIP、生成校验清单和本地标签。
 
 .DESCRIPTION
-    替代原来手工改 app/build.gradle、手工算 SHA-256、手工打 tag 的流程。
-    脚本只做机械同步，不生成发布说明：发版前必须先把 changelog.txt 与 README.md
-    的首节标题写成「## <版本> 标题」，否则脚本拒绝继续。
+    先同步 app/build.gradle、README.md 与应用内更新日志并提交。
+    脚本从干净的 HEAD 构建，APK、源码 ZIP 和标签使用同一提交。
 
 .PARAMETER Version
-    要发布的版本号，形如 0.5.21。versionCode 由次版本与修订号推出：minor*10+patch。
+    app/build.gradle 中已经提交的版本号。
 
 .PARAMETER SkipBuild
-    跳过构建，直接用 app/build/outputs/apk/release 下已有的 APK（仅用于重跑归档与打 tag）。
+    复用本脚本为当前提交构建且摘要一致的 APK。
 
 .PARAMETER NoTag
-    不创建本地 tag。
-
-.PARAMETER AllowDirty
-    允许工作区有未提交改动（默认不允许，防止把开发中的代码打进发布包）。
-
-.EXAMPLE
-    .\tools\release.ps1 -Version 0.5.21
+    仅构建和归档，不创建本地标签。
 #>
+[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][string]$Version,
+    [Parameter(Mandatory = $true)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [switch]$SkipBuild,
-    [switch]$NoTag,
-    [switch]$AllowDirty
+    [switch]$NoTag
 )
 
 $ErrorActionPreference = 'Stop'
-
 $repo = Split-Path $PSScriptRoot -Parent
-if (!(Test-Path (Join-Path $repo 'app\build.gradle'))) {
-    throw "未能在 $repo 找到 app/build.gradle，请把脚本放在仓库的 tools 目录下"
-}
-Set-Location $repo
+$tag = "v$Version"
 
-function Step([string]$text) { Write-Host "==> $text" -ForegroundColor Cyan }
-function Fail([string]$text) { throw $text }
+$commit = git -C $repo rev-parse --verify HEAD
+if ($LASTEXITCODE -ne 0) { throw '无法获取当前提交。' }
 
-# 1. 版本号格式与 versionCode 推导
-if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)$') { Fail "版本号格式应为 X.Y.Z，收到：$Version" }
-$major = [int]$Matches[1]; $minor = [int]$Matches[2]; $patch = [int]$Matches[3]
-$newCode = $minor * 10 + $patch
-
-$gradleFile = Join-Path $repo 'app\build.gradle'
-$gradle = [IO.File]::ReadAllText($gradleFile)
-$currentName = [regex]::Match($gradle, "versionName\s+'([^']+)'").Groups[1].Value
-$currentCodeText = [regex]::Match($gradle, 'versionCode\s+(\d+)').Groups[1].Value
-if (!$currentName -or !$currentCodeText) { Fail 'app/build.gradle 里没有找到 versionName / versionCode' }
-$currentCode = [int]$currentCodeText
-
-Step "当前版本 $currentName ($currentCode) → 目标 $Version ($newCode)"
-if ($newCode -le $currentCode) {
-    Fail "目标 versionCode $newCode 不大于当前 $currentCode。版本号写错了，或者忘了先升版本。"
+function Assert-ReleaseSource {
+    $head = git -C $repo rev-parse --verify HEAD
+    if ($LASTEXITCODE -ne 0 -or $head -cne $commit) { throw '发版过程中 HEAD 已变更。' }
+    $dirty = git -C $repo status --porcelain
+    if ($LASTEXITCODE -ne 0) { throw '无法检查工作区。' }
+    if ($dirty) { throw "请先提交版本号、发布说明和源码改动：$([Environment]::NewLine)$($dirty -join [Environment]::NewLine)" }
 }
 
-# 2. tag 不能已存在
-if (!$NoTag) {
-    $existing = git tag -l "v$Version"
-    if ($existing) { Fail "tag v$Version 已存在。要重发请先 git tag -d v$Version，或用 -NoTag。" }
+Assert-ReleaseSource
+$tagCommit = git -C $repo rev-parse --verify --quiet "refs/tags/$tag^{commit}"
+if ($tagCommit -and $tagCommit -cne $commit) { throw "$tag 已指向其他提交。" }
+
+$gradle = Get-Content -LiteralPath (Join-Path $repo 'app/build.gradle') -Raw -Encoding utf8
+$versionName = [regex]::Match($gradle, "(?m)^\s*versionName\s+'([^']+)'").Groups[1].Value
+$versionCode = [regex]::Match($gradle, '(?m)^\s*versionCode\s+(\d+)').Groups[1].Value
+if ($versionName -cne $Version -or !$versionCode) {
+    throw "请先提交 app/build.gradle 中的 versionName '$Version' 和 versionCode。"
 }
 
-# 3. 工作区必须干净
-if (!$AllowDirty) {
-    $dirty = git status --porcelain
-    if ($dirty) { Fail "工作区有未提交改动，先提交或用 -AllowDirty：`n$dirty" }
+$heading = "^##\s+$([regex]::Escape($Version))\s+\S"
+$changelog = Get-Content -LiteralPath (Join-Path $repo 'app/src/main/assets/changelog.txt') -TotalCount 1 -Encoding utf8
+if ($changelog -notmatch $heading -or
+    !(Select-String -LiteralPath (Join-Path $repo 'README.md') -Pattern $heading -List -Encoding utf8)) {
+    throw "请先提交应用内更新日志与 README.md 的 $Version 版说明。"
 }
 
-# 4. 发布说明先写好，脚本不代写
-$changelog = Get-Content (Join-Path $repo 'app\src\main\assets\changelog.txt') -TotalCount 1
-if ($changelog -notmatch "^##\s+$([regex]::Escape($Version))\s+\S") {
-    Fail "app/src/main/assets/changelog.txt 首行不是「## $Version 标题」。先写好本版说明再来发版。"
-}
-$readmeHead = Select-String -Path (Join-Path $repo 'README.md') -Pattern "^##\s+$([regex]::Escape($Version))\s+\S" -List
-if (!$readmeHead) {
-    Fail "README.md 里没有「## $Version 标题」这一节。先写好本版说明再来发版。"
-}
-
-# 5. 写回版本号（只改这两行，保持原有缩进与写法）
-Step '更新 app/build.gradle 的 versionCode / versionName'
-$upgraded = $gradle -replace 'versionCode\s+\d+', "versionCode $newCode"
-$upgraded = $upgraded -replace "versionName\s+'[^']+'", "versionName '$Version'"
-if ($upgraded -notmatch "versionName '$([regex]::Escape($Version))'") { Fail 'versionName 写回失败，请检查 app/build.gradle 的写法' }
-[IO.File]::WriteAllText($gradleFile, $upgraded)
-
-# 6. 构建
-$apkDir = Join-Path $repo 'app\build\outputs\apk\release'
+$apkDir = Join-Path $repo 'app/build/outputs/apk/release'
+$provenanceFile = Join-Path $apkDir 'van-release-provenance.json'
 if (!$SkipBuild) {
-    Step '构建 release APK'
+    Write-Host "构建 $tag ($commit)"
     & (Join-Path $repo 'build-local.ps1') -Tasks ':app:assembleRelease'
-    if ($LASTEXITCODE -ne 0) { Fail "构建失败，退出码 $LASTEXITCODE。版本号已改在 app/build.gradle，需要回滚请 git checkout -- app/build.gradle" }
+    if ($LASTEXITCODE -ne 0) { throw "Release APK 构建失败，退出码 $LASTEXITCODE。" }
+}
+Assert-ReleaseSource
+
+$metadataPath = Join-Path $apkDir 'output-metadata.json'
+$metadata = Get-Content -LiteralPath $metadataPath -Raw -Encoding utf8 | ConvertFrom-Json
+$apk = $metadata.elements | Select-Object -First 1
+if ($metadata.applicationId -cne 'app.van.timetable' -or $metadata.variantName -cne 'release' -or
+    $metadata.elements.Count -ne 1 -or $apk.outputFile -cne 'app-release.apk' -or
+    $apk.versionName -cne $Version -or $apk.versionCode -ne [int]$versionCode) {
+    throw "构建产物与 $tag 的包名、版本号或 Release 变体不一致。"
 }
 
-# 7. 找 APK 并按发布约定重命名
-$apk = Get-ChildItem $apkDir -Filter '*.apk' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (!$apk) { Fail "在 $apkDir 找不到 APK。构建没成功，或用 -SkipBuild 时产物不存在。" }
+$apkPath = Join-Path $apkDir $apk.outputFile
+$apkHash = (Get-FileHash -LiteralPath $apkPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$archive = [IO.Compression.ZipFile]::OpenRead($apkPath)
+try {
+    $abis = @($archive.Entries.FullName | ForEach-Object {
+        if ($_ -match '^lib/([^/]+)/[^/]+\.so$') { $Matches[1] }
+    } | Sort-Object -Unique)
+    if ($abis.Count -ne 1 -or $abis[0] -cne 'arm64-v8a') { throw '发布 APK 必须仅包含 arm64-v8a 原生库。' }
+} finally {
+    $archive.Dispose()
+}
 
-$releaseDir = Join-Path $repo "deliverables\release-$Version"
-New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+if ($SkipBuild) {
+    if (!(Test-Path -LiteralPath $provenanceFile -PathType Leaf)) {
+        throw '找不到构建记录。请先正常执行一次发版脚本。'
+    }
+    $previous = Get-Content -LiteralPath $provenanceFile -Raw -Encoding utf8 | ConvertFrom-Json
+    if ($previous.commit -cne $commit -or $previous.sha256 -cne $apkHash) {
+        throw '已有 APK 的构建提交或摘要不符，请重新构建。'
+    }
+} else {
+    @{commit = $commit; sha256 = $apkHash} | ConvertTo-Json -Compress |
+        Set-Content -LiteralPath $provenanceFile -Encoding utf8
+}
 
 $apkName = "van-schedule-$Version-arm64.apk"
-$apkTarget = Join-Path $releaseDir $apkName
-Copy-Item $apk.FullName $apkTarget -Force
-Step "APK 已归档：deliverables\release-$Version\$apkName"
-
-# 8. 源码包
 $sourceName = "van-schedule-$Version-source.zip"
-$sourceTarget = Join-Path $releaseDir $sourceName
-Step "打包源码 $sourceName"
-$tempSource = Join-Path ([IO.Path]::GetTempPath()) "van-source-$Version"
-if (Test-Path $tempSource) { Remove-Item $tempSource -Recurse -Force }
-git archive --format=zip --prefix="van-schedule-$Version/" -o $sourceTarget HEAD
-if ($LASTEXITCODE -ne 0) { Fail 'git archive 失败，源码包没有生成' }
+$sumsName = "SHA256SUMS-$Version.txt"
+$releaseRoot = Join-Path $repo 'deliverables'
+New-Item -ItemType Directory -Path $releaseRoot -Force | Out-Null
+$releaseDir = Join-Path $releaseRoot "release-$Version"
+$staging = Join-Path $releaseRoot ('.release-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $staging | Out-Null
+try {
+    Copy-Item -LiteralPath $apkPath -Destination (Join-Path $staging $apkName)
+    $sourcePath = Join-Path $staging $sourceName
+    git -C $repo archive --format=zip "--prefix=van-schedule-$Version/" -o $sourcePath $commit
+    if ($LASTEXITCODE -ne 0) { throw "源码归档失败：$commit" }
 
-# 9. 校验文件
-Step '生成 SHA256SUMS'
-$sumFile = Join-Path $releaseDir "SHA256SUMS-$Version.txt"
-$lines = @()
-foreach ($f in @($apkTarget, $sourceTarget)) {
-    $hash = (Get-FileHash $f -Algorithm SHA256).Hash.ToLowerInvariant()
-    $lines += "$hash  $([IO.Path]::GetFileName($f))"
+    $sums = foreach ($name in @($apkName, $sourceName)) {
+        $hash = (Get-FileHash -LiteralPath (Join-Path $staging $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$hash  $name"
+    }
+    if (!$sums[0].StartsWith("$apkHash ")) { throw '归档 APK 与构建摘要不符。' }
+    [IO.File]::WriteAllLines((Join-Path $staging $sumsName), $sums, [Text.UTF8Encoding]::new($false))
+    Assert-ReleaseSource
+    if (Test-Path -LiteralPath $releaseDir) {
+        foreach ($name in @($apkName, $sourceName, $sumsName)) {
+            $existing = Join-Path $releaseDir $name
+            if (!(Test-Path -LiteralPath $existing -PathType Leaf) -or
+                (Get-FileHash -LiteralPath $existing).Hash -cne (Get-FileHash -LiteralPath (Join-Path $staging $name)).Hash) {
+                throw "已有归档内容不同：$existing"
+            }
+        }
+    } else {
+        [IO.Directory]::Move($staging, $releaseDir)
+    }
+
+    if (!$NoTag -and !$tagCommit) {
+        git -C $repo tag -a $tag -m "van课表 $Version" $commit
+        if ($LASTEXITCODE -ne 0) { throw "创建标签 $tag 失败。归档位于 $releaseDir。" }
+    }
+    Write-Host "归档完成：$releaseDir"
+} finally {
+    if (Test-Path -LiteralPath $staging -PathType Container) {
+        $resolvedStaging = (Resolve-Path -LiteralPath $staging).ProviderPath
+        $resolvedRoot = (Resolve-Path -LiteralPath $releaseRoot).ProviderPath
+        if ((Split-Path -Parent $resolvedStaging) -ceq $resolvedRoot -and
+            (Split-Path -Leaf $resolvedStaging) -match '^\.release-[0-9a-f]{32}$') {
+            Remove-Item -LiteralPath $resolvedStaging -Recurse -Force
+        }
+    }
 }
-[IO.File]::WriteAllLines($sumFile, $lines, [Text.UTF8Encoding]::new($false))
-Get-Content $sumFile | ForEach-Object { Write-Host "    $_" }
-
-# 10. 打 tag
-if (!$NoTag) {
-    Step "打 tag v$Version"
-    git tag "v$Version"
-    if ($LASTEXITCODE -ne 0) { Fail "git tag v$Version 失败" }
-}
-
-Step '完成。还需要手工做的：'
-Write-Host @"
-    1. 提交版本号改动：git add app/build.gradle && git commit -m "Release $Version"
-    2. tag 指向的应是发布提交，若上面的 commit 在打 tag 之后，删掉 tag 重打：
-       git tag -d v$Version && git tag v$Version
-    3. 推送：git push origin main && git push origin v$Version
-    4. 挂 Release：gh release create v$Version --latest --notes-file <发布说明>
-       deliverables/release-$Version/ 下三个资源：APK、源码 ZIP、SHA256SUMS
-"@

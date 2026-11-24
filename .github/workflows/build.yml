@@ -22,20 +22,17 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', '**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle', '**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Domain tests
-        run: ./gradlew :core:domain:test --no-daemon --stacktrace
+        run: ./gradlew :core:domain:test --configure-on-demand --no-daemon --stacktrace
 
       - name: Upload test report
         if: failure()
@@ -56,9 +53,6 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Check wearable SDK presence
         id: aar
         run: |
@@ -68,6 +62,12 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "::notice::未找到 xms-wearable-lib_1.4_release.aar，跳过 lint。取得方式见 app/libs/README.md。"
           fi
+
+      - name: Set up Android SDK
+        if: steps.aar.outputs.present == 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
 
       - name: Lint
         if: steps.aar.outputs.present == 'true'
