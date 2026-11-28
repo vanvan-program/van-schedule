@@ -82,7 +82,6 @@ class Version026UiTest {
         ui.onNodeWithTag("calendar-picker").assertExists()
         screenshot("026-calendar.png")
         ui.onNode(hasText(today.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.getDefault())), substring = true), useUnmergedTree = true).performClick()
-        ui.onNodeWithText("确定日期").performClick()
         ui.onNodeWithTag("clear-once-date").performScrollTo().assertExists()
         ui.activityRule.scenario.recreate()
         ui.onNodeWithTag("clear-once-date").performScrollTo().performClick()

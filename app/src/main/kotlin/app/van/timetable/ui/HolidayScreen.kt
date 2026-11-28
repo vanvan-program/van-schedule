@@ -35,13 +35,11 @@ fun HolidayScreen(s: Schedule, vm: VanViewModel) {
     ) {
         Muted("设置当前课表的放假日期，包含开始和结束两天。期间的课程在课表中以灰色卡片保留，标记为放假；小组件和提醒会跳过这些课程。撤销假期即可恢复原安排。")
         Field(name, { name = it }, "假期名称")
-        CalendarDateField("放假开始日期", from, { from = it }, Modifier.testTag("holiday-from-date"))
-        CalendarDateField(
-            "放假结束日期",
-            through,
-            { through = it },
-            Modifier.testTag("holiday-through-date"),
-        )
+        HolidayDateRangeField(from, through) { first, last ->
+            from = first
+            through = last
+            error = ""
+        }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
         Button(
             onClick = {

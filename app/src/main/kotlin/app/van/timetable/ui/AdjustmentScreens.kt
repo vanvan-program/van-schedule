@@ -204,8 +204,18 @@ fun SingleAdjustment(
                     { targetDay = it },
                 )
             else CalendarDateField("调整到日期", target, { target = it })
-            Field(start, { start = it }, "新的开始时间（可选 HH:mm）")
-            Field(end, { end = it }, "新的结束时间（可选 HH:mm）")
+            val session = s.sessions.firstOrNull { it.id == sessionId }
+            val targetDate = if (byWeek) runCatching {
+                CourseEngine.dateAt(s, targetWeek.toInt(), targetDay.toInt())
+            }.getOrNull() else runCatching { LocalDate.parse(target) }.getOrNull()
+            val sections = targetDate?.let { CourseEngine.routine(s, it).sections }
+            ClockRangeField(start, end, { from, through -> start = from; end = through },
+                optional = true,
+                suggestedStart = if (session?.mode == TimeMode.CLOCK) session.start.orEmpty()
+                    else sections?.firstOrNull { it.number == session?.startSection }?.start ?: "08:00",
+                suggestedEnd = if (session?.mode == TimeMode.CLOCK) session.end.orEmpty()
+                    else sections?.firstOrNull { it.number == session?.endSection }?.end ?: "08:45",
+            )
             Field(place, { place = it }, "新的地点（空白沿用原地点）")
         }
         if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)

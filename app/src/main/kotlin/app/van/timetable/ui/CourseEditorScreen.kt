@@ -244,8 +244,9 @@ fun CourseEditor(
                         slots[i] = slot.copy(day = day.toString(), first = first.toString(), last = last.toString())
                     }
                     if (slot.mode == TimeMode.CLOCK) {
-                        Field(slot.start, { slots[i] = slot.copy(start = it) }, "开始时间 HH:mm")
-                        Field(slot.end, { slots[i] = slot.copy(end = it) }, "结束时间 HH:mm")
+                        ClockRangeField(slot.start, slot.end, { start, end ->
+                            slots[i] = slot.copy(start = start, end = end)
+                        })
                     }
                     Field(slot.teacher, { slots[i] = slot.copy(teacher = it) }, "老师")
                     Field(slot.place, { slots[i] = slot.copy(place = it) }, "地点")

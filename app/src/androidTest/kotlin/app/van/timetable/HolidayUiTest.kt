@@ -52,13 +52,6 @@ class HolidayUiTest {
             useUnmergedTree = true,
         )
 
-    private fun chooseDate(tag: String, date: LocalDate) {
-        ui.onNodeWithTag(tag).performScrollTo().performClick()
-        ui.onNodeWithTag("calendar-picker").assertIsDisplayed()
-        dateNode(date).performClick()
-        ui.onNodeWithText("确定日期").performClick()
-    }
-
     private fun screenshot(name: String) {
         ui.waitForIdle()
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -74,8 +67,10 @@ class HolidayUiTest {
         ui.onNodeWithTag("tab-2").performClick()
         ui.onNodeWithText("节假日设置").performScrollTo().performClick()
         ui.onNode(hasSetTextAction() and hasText("假期名称")).performTextReplacement("测试连休")
-        chooseDate("holiday-from-date", from)
-        chooseDate("holiday-through-date", through)
+        ui.onNodeWithTag("holiday-date-range").performScrollTo().performClick()
+        dateNode(from).performClick()
+        dateNode(through).performClick()
+        ui.onNodeWithText("确定范围").performClick()
         ui.onNodeWithText("添加假期").performScrollTo().performClick()
         ui.waitUntil(10000) {
             runBlocking { store.all().first { it.id == s.id }.holidays.size == 1 }
@@ -162,7 +157,6 @@ class HolidayUiTest {
         dateNode(target.plusDays(1)).assertIsNotEnabled()
         screenshot("semester-calendar.png")
         dateNode(target).performClick()
-        ui.onNodeWithText("确定日期").performClick()
         ui.activityRule.scenario.recreate()
         ui.onNodeWithText("$target 周一").assertIsDisplayed()
         ui.onNodeWithText("保存学期设置").performScrollTo().performClick()
@@ -175,6 +169,6 @@ class HolidayUiTest {
         assertEquals(s.routines, saved.routines)
         ui.onNodeWithText("课表", useUnmergedTree = true).performClick()
         val currentWeek = CourseEngine.week(saved, LocalDate.now(ZoneId.of(saved.zone)))
-        ui.onNodeWithText("第${currentWeek}周 ▾").assertIsDisplayed()
+        ui.onNodeWithTag("week-selector").assertTextContains("第${currentWeek}周")
     }
 }
