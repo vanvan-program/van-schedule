@@ -1,9 +1,11 @@
 package app.van.timetable
 
+import android.view.ViewConfiguration
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -82,6 +84,66 @@ class TimetableLayoutTest {
     }
 
     private fun rowHeightPx(): Float = ui.onNodeWithTag("section-1").fetchSemanticsNode().boundsInRoot.height
+
+    private fun showDraggableTable(table: Schedule): MutableState<Schedule> {
+        val state = mutableStateOf(table)
+        val prefs = Preferences()
+        val now = monday.atStartOfDay(java.time.ZoneId.of(table.zone)).toInstant()
+        ui.setContent {
+            VanTheme(prefs) {
+                Timetable(state.value, prefs, now, {}, onUpdateSchedule = { state.value = it })
+            }
+        }
+        return state
+    }
+
+    @Test
+    fun longPressAfterPagingMovesOnlyTheVisibleWeeksLesson() {
+        val table = gridSchedule()
+        val state = showDraggableTable(table)
+        val pager = ui.onNodeWithTag("week-viewport")
+        pager.performTouchInput { swipeLeft() }
+        ui.waitForIdle()
+        val week2 = monday.plusWeeks(1)
+        dragLessonToTuesday(week2, 2, crossEdge = false)
+        ui.waitUntil(5000) { state.value != table }
+        val changed = state.value
+        assertTrue(CourseEngine.resolveDay(changed, week2.plusDays(1)).any { it.course.id == "long" })
+        assertFalse(CourseEngine.resolveDay(changed, week2).any { it.course.id == "long" })
+        assertTrue(CourseEngine.resolveDay(changed, monday).any { it.course.id == "long" })
+    }
+
+    @Test
+    fun holdingLessonAtPageEdgeMovesItIntoNextWeek() {
+        val table = gridSchedule()
+        val state = showDraggableTable(table)
+        dragLessonToTuesday(monday, 1, crossEdge = true)
+        ui.waitUntil(5000) { state.value != table }
+        assertFalse(CourseEngine.resolveDay(state.value, monday).any { it.course.id == "long" })
+        assertTrue(CourseEngine.resolveDay(state.value, monday.plusDays(8)).any { it.course.id == "long" })
+        assertTrue(CourseEngine.resolveDay(state.value, monday.plusWeeks(1)).any { it.course.id == "long" })
+    }
+
+    private fun dragLessonToTuesday(date: LocalDate, week: Int, crossEdge: Boolean) {
+        val pager = ui.onNodeWithTag("week-viewport")
+        val viewport = pager.fetchSemanticsNode().boundsInRoot
+        val card = ui.onNodeWithTag("grid-course-long-morning@$date").fetchSemanticsNode().boundsInRoot
+        val tuesday = ui.onNodeWithTag("week-day-$week-1").fetchSemanticsNode().boundsInRoot
+        val start = Offset(card.center.x, card.top + card.height * 0.2f) - viewport.topLeft
+        val timeout = ViewConfiguration.getLongPressTimeout().toLong() + 200
+        pager.performTouchInput { down(start) }
+        ui.mainClock.advanceTimeBy(timeout)
+        ui.onNodeWithText("拖向左右边缘可跨周", substring = true).assertIsDisplayed()
+        if (crossEdge) {
+            pager.performTouchInput { moveTo(Offset(viewport.width - 8 * density, start.y)) }
+            ui.mainClock.advanceTimeBy(1500)
+            ui.onNodeWithText("第1周 → 第2周", substring = true).assertIsDisplayed()
+        }
+        pager.performTouchInput {
+            moveTo(Offset(tuesday.center.x - viewport.left, start.y))
+            up()
+        }
+    }
 
     @Test
     fun noBreakBandsAreDrawnAnywhere() {

@@ -456,8 +456,20 @@ object CourseEngine {
         schedule: Schedule,
         now: Instant,
         globalDayOverrides: List<DayOverride> = emptyList(),
-    ): Occurrence? {
-        val date = now.atZone(ZoneId.of(schedule.zone)).toLocalDate()
+    ): Occurrence? = nextWindow(schedule, now, globalDayOverrides).occurrence
+
+    data class NextWindow(val occurrence: Occurrence?, val from: Instant, val until: Instant) {
+        fun contains(instant: Instant): Boolean = instant >= from && instant < until
+    }
+
+    fun nextWindow(
+        schedule: Schedule,
+        now: Instant,
+        globalDayOverrides: List<DayOverride> = emptyList(),
+    ): NextWindow {
+        val zone = ZoneId.of(schedule.zone)
+        val date = now.atZone(zone).toLocalDate()
+        val midnight = date.plusDays(1).atStartOfDay(zone).toInstant()
         val last =
             maxOf(
                 LocalDate.parse(schedule.week1Monday).plusWeeks(schedule.maxWeeks.toLong()),
@@ -472,19 +484,26 @@ object CourseEngine {
             .filter { it > last && it >= date }
             .distinct().sorted()
         val regularDates = generateSequence(date) { it.plusDays(1) }.takeWhile { it <= last }
-        val zone = ZoneId.of(schedule.zone)
         for (d in regularDates + laterMakeupDates) {
             val available =
                 resolveDay(schedule, d, globalDayOverrides).filter { it.endsAt(zone) > now }
             val ongoing = available.filter { it.startsAt(zone) <= now }
             val pool = ongoing.ifEmpty { available }
             pool.firstOrNull()?.let { first ->
-                return conflicts(pool)
+                val selected = conflicts(pool)
                     .firstOrNull { group -> group.any { it.id == first.id } }
                     ?.let(::main) ?: first
+                // Another lesson starting or ending can change the winner of a conflict.
+                var until = midnight
+                if (d == date) for (lesson in available) {
+                    val start = lesson.startsAt(zone)
+                    if (start > now && start < until) until = start
+                    until = minOf(until, lesson.endsAt(zone))
+                }
+                return NextWindow(selected, now, until)
             }
         }
-        return null
+        return NextWindow(null, now, midnight)
     }
 
     fun conflicts(items: List<Occurrence>): List<List<Occurrence>> {

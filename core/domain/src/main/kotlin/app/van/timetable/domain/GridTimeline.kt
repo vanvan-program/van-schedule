@@ -27,33 +27,104 @@ class GridTimeline private constructor(val bands: List<Band>) {
     fun gapContaining(start: LocalTime, end: LocalTime): Band? =
         bands.firstOrNull { it.section == null && start >= it.start && end <= it.end }
 
+    private fun fitsSections(start: LocalTime, end: LocalTime): Boolean =
+        bands.any { it.section != null && start >= it.start && start < it.end } &&
+            bands.any { it.section != null && end > it.start && end <= it.end }
+
     companion object {
         /** Check the whole timetable so paging never changes the spacing policy. */
-        fun canCollapseGaps(schedule: Schedule): Boolean {
+        fun canCollapseGaps(schedule: Schedule): Boolean = canCollapseGaps(schedule, emptyList())
+
+        fun canCollapseGaps(schedule: Schedule, globalDays: List<DayOverride>): Boolean {
+            // With one effective routine, section-based lessons (including moved lessons
+            // and inactive previews) start and end on the grid's own section boundaries.
+            if (schedule.routineRules.isEmpty() &&
+                schedule.sessions.none { it.mode == TimeMode.CLOCK } &&
+                schedule.sessionOverrides.none { it.start != null || it.end != null }
+            ) return true
+
             val first = LocalDate.parse(schedule.week1Monday)
-            val dates = (0 until schedule.maxWeeks * 7).map { first.plusDays(it.toLong()) }.toMutableSet()
-            dates += schedule.sessions.mapNotNull { it.date?.let(LocalDate::parse) }
-            dates += schedule.dayOverrides.map { LocalDate.parse(it.date) }
-            dates += schedule.sessionOverrides.flatMap { listOfNotNull(it.originalDate, it.targetDate).map(LocalDate::parse) }
-            // Include the courses shown in holiday previews as well as ordinary days.
+            val axes = mutableMapOf<List<Section>, GridTimeline>()
+            fun axis(sections: List<Section>) = axes.getOrPut(sections) { create(sections, 0f) }
+            val possibleAxes = if (schedule.routineRules.isEmpty()) {
+                listOf(axis(CourseEngine.routine(schedule, first).sections))
+            } else schedule.routines.map { axis(it.sections) }.distinct()
+            fun fitsEveryAxis(start: String, end: String): Boolean {
+                val a = LocalTime.parse(start)
+                val b = LocalTime.parse(end)
+                return possibleAxes.all { it.fitsSections(a, b) }
+            }
+
+            val outside = schedule.sessions.filter { it.mode == TimeMode.CLOCK && !fitsEveryAxis(it.start, it.end) }
+            val outsideIds = outside.mapTo(hashSetOf()) { it.id }
+            val overrides = schedule.sessionOverrides.filter { rule ->
+                !rule.cancelled && (rule.sessionId in outsideIds || when {
+                    rule.start == null && rule.end == null -> false
+                    rule.start == null || rule.end == null -> true
+                    else -> !fitsEveryAxis(rule.start, rule.end)
+                })
+            }
+            if (outside.isEmpty() && overrides.isEmpty() && schedule.routineRules.isEmpty()) return true
+
+            // Resolve actual occurrences: a raw out-of-band lesson may be cancelled or moved.
+            val candidates = sequence {
+                for (session in outside) {
+                    if (session.date != null) yield(LocalDate.parse(session.date))
+                    else for (week in session.weeks) {
+                        if (week in 1..schedule.maxWeeks)
+                            yield(first.plusWeeks(week - 1L).plusDays(session.day - 1L))
+                    }
+                }
+                for (rule in overrides) yield(LocalDate.parse(rule.targetDate ?: rule.originalDate))
+                if (outside.isNotEmpty()) {
+                    for (day in schedule.dayOverrides + globalDays) {
+                        if (!day.cancelled && day.sourceDate != null) yield(LocalDate.parse(day.date))
+                    }
+                }
+                if (schedule.routineRules.isNotEmpty()) yieldAll(routineTransitionDates(schedule, globalDays, first))
+            }
             val visible = schedule.copy(holidays = emptyList())
-            val timelines = mutableMapOf<List<Section>, GridTimeline>()
-            return dates.all { date ->
-                // The weekly grid uses Monday's routine for its shared axis.
-                val monday = date.minusDays((date.dayOfWeek.value - 1).toLong())
+            return candidates.distinct().all { day ->
+                val monday = day.minusDays(day.dayOfWeek.value - 1L)
                 val sections = CourseEngine.routine(schedule, monday).sections
-                val timeline = timelines.getOrPut(sections) { create(sections) }
-                val times = CourseEngine.timetableDay(visible, date).map { it.start to it.end }.toMutableList()
-                // Non-current section courses can also appear as grey previews.
-                val daySections = CourseEngine.routine(schedule, date).sections.associateBy { it.number }
-                times += schedule.sessions.filter {
-                    it.date == null && it.mode == TimeMode.SECTIONS && it.day == date.dayOfWeek.value
-                }.map { LocalTime.parse(daySections.getValue(it.startSection).start) to LocalTime.parse(daySections.getValue(it.endSection).end) }
-                times.all { (start, end) ->
-                    // A multi-section lesson may cross breaks, but neither boundary
-                    // may fall inside a break, where collapsing would hide time.
-                    timeline.bands.any { it.section != null && start >= it.start && start < it.end } &&
-                        timeline.bands.any { it.section != null && end > it.start && end <= it.end }
+                val timeline = axis(sections)
+                if (CourseEngine.resolveDay(visible, day, globalDays).any { !timeline.fitsSections(it.start, it.end) })
+                    return@all false
+                val daySections = CourseEngine.routine(schedule, day).sections
+                if (daySections == sections) return@all true
+                // The grid may show inactive section lessons from other weeks in grey.
+                val byNumber = daySections.associateBy { it.number }
+                schedule.sessions.asSequence().filter {
+                    it.mode == TimeMode.SECTIONS && it.date == null && it.day == day.dayOfWeek.value
+                }.all {
+                    timeline.fitsSections(LocalTime.parse(byNumber.getValue(it.startSection).start),
+                        LocalTime.parse(byNumber.getValue(it.endSection).end))
+                }
+            }
+        }
+
+        /** Only a mid-week routine change can put a section lesson off Monday's shared axis. */
+        private fun routineTransitionDates(
+            schedule: Schedule, globalDays: List<DayOverride>, first: LocalDate,
+        ): Sequence<LocalDate> = sequence {
+            val end = first.plusWeeks(schedule.maxWeeks.toLong())
+            val extra = buildSet {
+                schedule.sessions.mapNotNullTo(this) { it.date }
+                (schedule.dayOverrides + globalDays).mapTo(this) { it.date }
+                schedule.sessionOverrides.forEach { rule ->
+                    add(rule.originalDate)
+                    rule.targetDate?.let(::add)
+                }
+            }
+            for (rule in schedule.routineRules) {
+                val through = LocalDate.parse(rule.through)
+                val after = if (through == LocalDate.MAX) null else through.plusDays(1)
+                for (change in listOfNotNull(LocalDate.parse(rule.from), after)) {
+                    if (change.dayOfWeek.value == 1) continue
+                    for (offset in 0..(7 - change.dayOfWeek.value)) {
+                        val day = change.plusDays(offset.toLong())
+                        if ((day >= first && day < end) || day.toString() in extra) yield(day)
+                    }
                 }
             }
         }

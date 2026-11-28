@@ -18,7 +18,6 @@ import app.van.timetable.widget.DualWidget
 import app.van.timetable.widget.NextWidget
 import app.van.timetable.widget.TodayWidget
 import app.van.timetable.widget.WidgetPinResult
-import app.van.timetable.widget.Widgets
 import app.van.timetable.widget.requestWidgetPin
 
 /** 桌面小组件说明与添加入口。从 VanApp 迁出，保持原有文案与行为。 */
@@ -103,7 +102,7 @@ fun WidgetGallery(state: VanState, vm: VanViewModel) {
             }
         }
         OutlinedButton(
-            onClick = { vm.work { Widgets.updateAll(context) } },
+            onClick = { vm.refreshWidgets() },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("刷新所有小组件")

@@ -10,6 +10,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerSnapDistance
 import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -24,14 +25,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import com.haooz.softglass.shape.ContinuousRoundedRectangle
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 // A century on either side of the initial date; avoid giant pager indices whose
 // layout estimates lose pixel precision when converted to Float.
 internal const val DAY_PAGER_ANCHOR = 36_500
 internal const val DAY_PAGER_COUNT = DAY_PAGER_ANCHOR * 2 + 1
+
+private val movingPageCorners = List(15) { RoundedCornerShape(it.dp) }
 
 /** 一周一页的横向分页容器：逐页缩放/淡出，翻页停稳后回馈触感。 */
 @Composable
@@ -57,8 +60,9 @@ internal fun TimetablePager(
         modifier = modifier,
         userScrollEnabled = userScrollEnabled,
         key = { it },
-        // 只预组合相邻一页：相邻页是完整网格，再多就变成翻页起手时的组合尖峰。
-        beyondViewportPageCount = 1,
+        // Keep the source card attached when its long press pages across an edge.
+        // Normal swipes use Pager's directional prefetch.
+        beyondViewportPageCount = if (userScrollEnabled) 0 else 1,
         flingBehavior =
             PagerDefaults.flingBehavior(
                 state,
@@ -77,10 +81,8 @@ internal fun TimetablePager(
                 scaleX = scale
                 scaleY = scale
                 translationX = rawOffset * 10f
-                if (offset > 0.01f) {
-                    clip = true
-                    shape = ContinuousRoundedRectangle((14f * offset).dp)
-                }
+                clip = offset > 0.01f
+                if (clip) shape = movingPageCorners[(14 * offset).roundToInt()]
             }
         ) {
             content(page)

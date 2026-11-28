@@ -357,7 +357,9 @@ fun AppearanceFontPage(p: Preferences, vm: VanViewModel) {
 /** 「视图与动效」三级页。 */
 @Composable
 fun AppearanceMotionPage(p: Preferences, vm: VanViewModel, schedule: Schedule?) {
-    val canCollapseGaps = remember(schedule) { schedule?.let(GridTimeline::canCollapseGaps) ?: false }
+    val showGaps = p.showCourseGaps ?: remember(schedule, p.globalDayOverrides) {
+        schedule == null || !GridTimeline.canCollapseGaps(schedule, p.globalDayOverrides)
+    }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -385,7 +387,7 @@ fun AppearanceMotionPage(p: Preferences, vm: VanViewModel, schedule: Schedule?) 
             )
             Toggle(
                 "保留课间时间空档",
-                p.showCourseGaps ?: !canCollapseGaps,
+                showGaps,
                 { v -> vm.prefs { it.copy(showCourseGaps = v) } },
                 "${if (p.showCourseGaps == null) "当前自动判断。" else "当前使用手动设置。"}手动关闭后收紧空白课间和午休，仅为放不下的课程留出位置。空课节次仍显示。",
                 modifier = Modifier.testTag("course-gap-setting"),

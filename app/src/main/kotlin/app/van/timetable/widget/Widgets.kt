@@ -77,14 +77,25 @@ object Widgets {
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
             )
 
-    suspend fun boundaries(c: Context, now: Instant): List<Instant> {
-        val p = (c.applicationContext as VanApplication).store.prefs()
+    internal data class BoundWidget(val id: Int, val provider: String, val schedule: Schedule?)
+
+    internal suspend fun boundWidgets(c: Context, p: Preferences, active: Schedule?): List<BoundWidget> {
+        val store = (c.applicationContext as VanApplication).store
         val manager = AppWidgetManager.getInstance(c)
-        val schedules =
-            classes
-                .flatMap { manager.getAppWidgetIds(ComponentName(c, it)).toList() }
-                .mapNotNull { schedule(c, it) }
-                .distinctBy { it.id }
+        val bindings = c.getSharedPreferences("widgets", Context.MODE_PRIVATE)
+        val schedules = mutableMapOf<String, Schedule?>()
+        p.activeScheduleId?.let { schedules[it] = active }
+        return buildList {
+            for (provider in classes) for (id in manager.getAppWidgetIds(ComponentName(c, provider))) {
+                val key = bindings.getString("schedule_$id", null)?.takeIf { it.isNotBlank() } ?: p.activeScheduleId
+                if (key != null && key !in schedules) schedules[key] = store.find(key)
+                add(BoundWidget(id, provider.name, schedules[key]))
+            }
+        }
+    }
+
+    internal fun boundaries(widgets: List<BoundWidget>, p: Preferences, now: Instant): List<Instant> {
+        val schedules = widgets.mapNotNull { it.schedule }.distinctBy { it.id }
         return schedules.flatMap { s ->
             val zone = ZoneId.of(s.zone)
             val date = now.atZone(zone).toLocalDate()
@@ -95,19 +106,20 @@ object Widgets {
         }
     }
 
-    suspend fun updateAll(c: Context, now: Instant = Instant.now()) {
-        val m = AppWidgetManager.getInstance(c)
-        classes.forEach { clazz ->
-            m.getAppWidgetIds(ComponentName(c, clazz)).forEach { id -> update(c, id, clazz, now) }
-        }
+    internal fun updateAll(c: Context, widgets: List<BoundWidget>, p: Preferences, now: Instant) {
+        for (widget in widgets) render(c, widget.id, widget.provider, widget.schedule, p, now)
     }
 
     suspend fun update(c: Context, id: Int, clazz: Class<*>? = null, now: Instant = Instant.now()) {
         val app = c.applicationContext as VanApplication
         val s = schedule(c, id)
         val p = app.store.prefs()
+        val provider = clazz?.name ?: AppWidgetManager.getInstance(c).getAppWidgetInfo(id)?.provider?.className ?: return
+        render(c, id, provider, s, p, now)
+    }
+
+    private fun render(c: Context, id: Int, provider: String, s: Schedule?, p: Preferences, now: Instant) {
         val m = AppWidgetManager.getInstance(c)
-        val provider = clazz?.name ?: m.getAppWidgetInfo(id)?.provider?.className ?: return
         val type =
             if (provider.endsWith("NextWidget")) "next"
             else if (provider.endsWith("TodayWidget")) "today" else "dual"

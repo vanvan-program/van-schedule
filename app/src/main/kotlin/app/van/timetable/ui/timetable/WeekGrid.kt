@@ -19,11 +19,14 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -112,8 +115,12 @@ private fun weekData(
     days: Int,
     showInactive: Boolean,
     globalDayOverrides: List<DayOverride>,
-): List<GridDay> =
-    (0 until days).map { d ->
+): List<GridDay> {
+    val weeklySections = if (showInactive) {
+        s.sessions.filter { it.date == null && it.mode == TimeMode.SECTIONS }.groupBy { it.day }
+    } else emptyMap()
+    val courses = if (weeklySections.isEmpty()) emptyMap() else s.courses.associateBy { it.id }
+    return (0 until days).map { d ->
         val date = monday.plusDays(d.toLong())
         val holiday = CourseEngine.holiday(s, date) != null
         val present = CourseEngine.timetableDay(s, date, globalDayOverrides)
@@ -124,11 +131,11 @@ private fun weekData(
             val group = groupById[o.id]
             GridEntry(o, holiday, "${if (holiday) "[放假]" else ""}${if (o.adjusted) "【调】" else ""}${if (group != null) "+${group.size - 1} " else ""}", group != null)
         }.toMutableList()
-        if (showInactive) {
+        val candidates = weeklySections[d + 1]
+        if (candidates != null) {
             val week = CourseEngine.week(s, date)
             val sections = CourseEngine.routine(s, date).sections.associateBy { it.number }
-            val courses = s.courses.associateBy { it.id }
-            s.sessions.filter { it.date == null && it.mode == TimeMode.SECTIONS && it.day == d + 1 && week !in it.weeks }
+            candidates.asSequence().filter { week !in it.weeks }
                 .distinctBy { it.startSection to it.endSection }.forEach { n ->
                     val start = LocalTime.parse(sections.getValue(n.startSection).start)
                     val end = LocalTime.parse(sections.getValue(n.endSection).end)
@@ -139,6 +146,7 @@ private fun weekData(
         }
         GridDay(date, entries)
     }
+}
 
 @Composable
 internal fun WeekGrid(
@@ -146,6 +154,7 @@ internal fun WeekGrid(
     gridPan: MutableStateFlow<Int>, activePage: Boolean, canCollapseGaps: Boolean,
     nav: (String) -> Unit,
     now: Instant = Instant.now(),
+    textMeasurer: TextMeasurer = rememberTextMeasurer(),
     dragMetrics: GridDragMetrics? = null,
     dragging: DraggingCourse? = null,
     onDragStart: (Occurrence, Int, Float, Float, Offset, Offset) -> Unit = { _, _, _, _, _, _ -> },
@@ -170,7 +179,6 @@ internal fun WeekGrid(
         weekData(s, monday, days, p.showInactive, p.globalDayOverrides)
     }
     val compactAxis = p.showCourseGaps?.not() ?: canCollapseGaps
-    val textMeasurer = rememberTextMeasurer()
     val numberStyle = LocalTextStyle.current.copy(fontSize = 14.sp, lineHeight = 17.sp)
     val timeStyle = LocalTextStyle.current.copy(fontSize = 10.sp, lineHeight = 12.sp)
     // Measure using the same font and scale as the rendered labels. Fixed estimates
@@ -370,8 +378,8 @@ internal fun WeekGrid(
                         val isBeingDragged = dragging?.occurrence?.session?.id == o.session.id && dragging.fromWeek == week
                         val canDrag = dragMetrics != null && !entry.inactive && !entry.conflict &&
                             o.session.mode == TimeMode.SECTIONS && o.session.date == null
-                        var cardRootOffset = Offset.Zero
                         GridCard(
+                            textMeasurer = textMeasurer,
                             name = o.course.name,
                             place = o.place,
                             teacher = o.session.teacher,
@@ -393,15 +401,15 @@ internal fun WeekGrid(
                                 )
                                 .then(
                                     if (canDrag) {
-                                        Modifier.onGloballyPositioned { cardRootOffset = it.positionInRoot() }
-                                            .pointerInput(o.id, week) {
-                                                val wPx = with(density) { cardWidth.toPx() }
-                                                val hPx = with(density) { cardHeight.toPx() }
+                                        var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                                        Modifier.onPlaced { coordinates = it }
+                                            .pointerInput(o, week) {
                                                 var finger = Offset.Zero
                                                 detectDragGesturesAfterLongPress(
-                                                    onDragStart = { localOffset ->
-                                                        finger = cardRootOffset + localOffset
-                                                        onDragStart(o, week, wPx, hPx, finger, localOffset)
+                                                    onDragStart = start@{ localOffset ->
+                                                        val card = coordinates?.takeIf { it.isAttached } ?: return@start
+                                                        finger = card.localToRoot(localOffset)
+                                                        onDragStart(o, week, card.size.width.toFloat(), card.size.height.toFloat(), finger, localOffset)
                                                     },
                                                     onDrag = { change, dragAmount ->
                                                         change.consume()
@@ -430,6 +438,7 @@ internal fun WeekGrid(
 /** Width and height are known by the parent; avoid one subcomposition per card. */
 @Composable
 private fun GridCard(
+    textMeasurer: TextMeasurer,
     name: String,
     place: String,
     teacher: String,
@@ -454,7 +463,6 @@ private fun GridCard(
     val textScale = p.cardTextScale.coerceIn(0.75f, 1.4f)
     val nameSize = (if (compact) 9f else if (width < 52.dp) 11f else if (pastel) 12.7f else 12f) * textScale
     val subSize = (if (pastel) 11f else 9f) * textScale
-    val textMeasurer = rememberTextMeasurer()
     val nameStyle = LocalTextStyle.current.copy(
         fontSize = nameSize.sp, lineHeight = (nameSize * 1.18f).sp,
         fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
@@ -465,35 +473,43 @@ private fun GridCard(
     )
     val textWidth = with(density) { (width - 6.dp).roundToPx().coerceAtLeast(1) }
     val contentHeight = with(density) { (height - if (compact) 0.dp else 6.dp).roundToPx().coerceAtLeast(0) }
-    fun measuredHeight(text: String, style: androidx.compose.ui.text.TextStyle, lines: Int) =
+    fun measure(text: String, style: androidx.compose.ui.text.TextStyle, lines: Int) =
         textMeasurer.measure(text, style, maxLines = lines, overflow = TextOverflow.Ellipsis,
-            constraints = Constraints(maxWidth = textWidth)).size.height
+            constraints = Constraints(maxWidth = textWidth))
     val title = prefix + name
     val location = if (pastel) "@$place" else place
     // Reserve complete measured lines, including font padding. On short cards,
     // reduce optional metadata before it can squeeze another field to half a line.
-    val titleHeight = measuredHeight(title, nameStyle, 1)
+    val firstTitleLine = measure(title, nameStyle, 1)
+    val titleHeight = firstTitleLine.size.height
     var remaining = (contentHeight - titleHeight).coerceAtLeast(0)
     var placeLines = 0
+    var placeHeight = 0
     if (p.showCardPlace && place.isNotBlank() && !compact) {
-        val oneLine = measuredHeight(location, subStyle, 1)
-        if (oneLine <= remaining) {
+        placeHeight = measure(location, subStyle, 1).size.height
+        if (placeHeight <= remaining) {
             placeLines = 1
-            remaining -= oneLine
+            remaining -= placeHeight
         }
     }
-    val teacherHeight = measuredHeight(teacher, subStyle, 1)
-    val showTeacher = p.showCardTeacher && teacher.isNotBlank() && !compact && teacherHeight <= remaining
-    if (showTeacher) remaining -= teacherHeight
+    val showTeacher = if (p.showCardTeacher && teacher.isNotBlank() && !compact) {
+        val teacherHeight = measure(teacher, subStyle, 1).size.height
+        if (teacherHeight <= remaining) {
+            remaining -= teacherHeight
+            true
+        } else false
+    } else false
     if (placeLines == 1 && height >= 60.dp) {
-        val extra = measuredHeight(location, subStyle, 2) - measuredHeight(location, subStyle, 1)
+        val extra = measure(location, subStyle, 2).size.height - placeHeight
         if (extra <= remaining) {
             placeLines = 2
             remaining -= extra
         }
     }
-    val nameLines = if (compact) 1 else (1..5).last { lines ->
-        measuredHeight(title, nameStyle, lines) <= titleHeight + remaining
+    val nameLines = if (compact || !firstTitleLine.hasVisualOverflow) 1 else {
+        (5 downTo 2).firstOrNull { lines ->
+            measure(title, nameStyle, lines).size.height <= titleHeight + remaining
+        } ?: 1
     }
     val textColor = when {
         inactive -> colors.inactiveText

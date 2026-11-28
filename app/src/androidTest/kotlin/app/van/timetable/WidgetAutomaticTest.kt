@@ -220,7 +220,7 @@ class WidgetAutomaticTest {
                     Intent(context, MainActivity::class.java)
                         .putExtra("openTimetable", true)
                         .putExtra("scheduleId", schedule.id)
-                        .putExtra("date", today.plusWeeks(1).toString())
+                        .putExtra("date", LocalDate.parse(schedule.week1Monday).plusWeeks(1).toString())
                         .addFlags(
                             Intent.FLAG_ACTIVITY_NEW_TASK or
                                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
@@ -231,7 +231,7 @@ class WidgetAutomaticTest {
             ui.waitUntil(10000) {
                 ui.onAllNodesWithTag("week-viewport").fetchSemanticsNodes().isNotEmpty()
             }
-            ui.onNodeWithText("第2周 ▾").assertIsDisplayed()
+            ui.onNodeWithText("第2周").assertIsDisplayed()
             ui.onNodeWithText(schedule.name).assertIsDisplayed()
             assertEquals(
                 "打开绑定表不改变App启用的课表",

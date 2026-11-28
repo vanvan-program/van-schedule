@@ -197,7 +197,8 @@ object Scheduler {
                             .build(),
                     )
             } else NotificationManagerCompat.from(c).cancel(1)
-            boundaries += Widgets.boundaries(c, now)
+            val widgets = Widgets.boundWidgets(c, p, active)
+            boundaries += Widgets.boundaries(widgets, p, now)
             if (active != null && p.statusNotification && allowed(c))
                 (0..1)
                     .flatMap {
@@ -227,7 +228,7 @@ object Scheduler {
             } catch (_: SecurityException) {
                 alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.toEpochMilli(), pi)
             }
-            Widgets.updateAll(c, now)
+            Widgets.updateAll(c, widgets, p, now)
         }
     }
 

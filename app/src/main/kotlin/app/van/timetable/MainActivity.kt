@@ -9,12 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.lifecycleScope
-import app.van.timetable.system.AppDiagnostics
-import app.van.timetable.system.Scheduler
 import app.van.timetable.ui.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vm: VanViewModel by viewModels()
@@ -58,16 +53,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        (application as VanApplication).band.onChanged()
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                Scheduler.reconcile(this@MainActivity)
-                AppDiagnostics.recovered("resume")
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                AppDiagnostics.report("resume", e, "进入课表时刷新提醒失败")
-            }
-        }
+        (application as VanApplication).onTimetableResumed()
     }
 }

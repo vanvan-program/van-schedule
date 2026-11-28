@@ -56,12 +56,16 @@ import kotlinx.coroutines.withContext
 internal fun NextClassBar(s: Schedule, now: Instant, p: Preferences, nav: (String) -> Unit) {
     val colors = LocalVan.current
     val dateNow = now.atZone(ZoneId.of(s.zone)).toLocalDate()
-    // Searching future days must not block a drag or repeat on page changes.
-    val nextState =
-        produceState<Occurrence?>(null, s, now, p.globalDayOverrides) {
-            value = withContext(Dispatchers.Default) { CourseEngine.next(s, now, p.globalDayOverrides) }
+    val clock by rememberUpdatedState(now)
+    val window = remember(s, p.globalDayOverrides) { mutableStateOf<CourseEngine.NextWindow?>(null) }
+    LaunchedEffect(window) {
+        snapshotFlow { clock }.collect { instant ->
+            if (window.value?.contains(instant) != true) {
+                window.value = withContext(Dispatchers.Default) { CourseEngine.nextWindow(s, instant, p.globalDayOverrides) }
+            }
         }
-    val next = nextState.value ?: return
+    }
+    val next = window.value?.takeIf { it.contains(now) }?.occurrence ?: return
     Surface(
         Modifier.fillMaxWidth().testTag("next-class").clickable {
             nav(occurrenceRoute(next))

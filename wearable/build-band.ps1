@@ -1,9 +1,16 @@
 param([string]$JavaPath = $env:JAVA_HOME)
 $ErrorActionPreference = 'Stop'
 $vanBandRoot = Split-Path $PSScriptRoot -Parent
-if (!$JavaPath) { $JavaPath = 'C:\Users\ASUS\AppData\Local\Programs\Microsoft\jdk-21.0.9.10-hotspot' }
+$javaExe = if ($JavaPath) {
+    Join-Path $JavaPath 'bin\java.exe'
+} else {
+    (Get-Command java.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+}
+if (!$javaExe -or !(Test-Path -LiteralPath $javaExe -PathType Leaf)) {
+    throw '未找到 Java。请配置 JAVA_HOME、PATH 或传入 -JavaPath。'
+}
 if (!(Test-Path -LiteralPath (Join-Path $vanBandRoot 'signing.properties'))) { throw '需要手机端同一份本机 signing.properties；私钥不在源码交付中。' }
-$env:VAN_BAND_JAVA = Join-Path $JavaPath 'bin\java.exe'
+$env:VAN_BAND_JAVA = $javaExe
 $vanBandCli = Join-Path $PSScriptRoot 'node_modules\aiot-toolkit\lib\bin.js'
 if (!(Test-Path -LiteralPath $vanBandCli)) { $vanBandCli = Join-Path $vanBandRoot '.tools\vanband\toolchain\node_modules\aiot-toolkit\lib\bin.js' }
 if (!(Test-Path -LiteralPath $vanBandCli)) { throw '请先在 wearable 目录执行 npm install。' }

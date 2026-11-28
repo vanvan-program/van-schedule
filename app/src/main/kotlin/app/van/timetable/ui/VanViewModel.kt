@@ -29,17 +29,14 @@ data class VanState(
 }
 
 class VanViewModel(app: Application) : AndroidViewModel(app) {
-    val store = (app as VanApplication).store
+    val store by lazy { (app as VanApplication).store }
     val state =
-        combine(store.schedules, store.preferences) { s, p ->
+        (app as VanApplication).schedulePreferences.map { (s, p) ->
                 val indexMap = p.scheduleOrder.withIndex().associate { it.value to it.index }
                 val ordered =
                     if (indexMap.isEmpty()) s
                     else
-                        s.sortedWith(
-                            compareBy<Schedule> { indexMap[it.id] ?: Int.MAX_VALUE }
-                                .thenBy { s.indexOf(it) }
-                        )
+                        s.sortedBy { indexMap[it.id] ?: Int.MAX_VALUE }
                 VanState(ordered, p, true)
             }
             .stateIn(viewModelScope, SharingStarted.Eagerly, VanState())
@@ -71,7 +68,6 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     withContext(Dispatchers.IO) {
                         block()
-                        Scheduler.reconcile(getApplication())
                     }
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
@@ -108,10 +104,7 @@ class VanViewModel(app: Application) : AndroidViewModel(app) {
         val indexMap = p.scheduleOrder.withIndex().associate { it.value to it.index }
         val ordered =
             current
-                .sortedWith(
-                    compareBy<Schedule> { indexMap[it.id] ?: Int.MAX_VALUE }
-                        .thenBy { current.indexOf(it) }
-                )
+                .sortedBy { indexMap[it.id] ?: Int.MAX_VALUE }
                 .map { it.id }
                 .toMutableList()
         val from = ordered.indexOf(id)

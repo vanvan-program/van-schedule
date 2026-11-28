@@ -49,7 +49,7 @@ fun NotificationSettings(p: Preferences, vm: VanViewModel) {
     val launcher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
             refresh++
-            vm.work {}
+            vm.refreshWidgets()
         }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),

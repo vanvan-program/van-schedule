@@ -1,0 +1,20 @@
+# Local credentials and raw runtime artifacts are excluded from source exports.
+.env export-ignore
+.env.* export-ignore
+.env.example -export-ignore
+.env.sample -export-ignore
+.env.template -export-ignore
+local.properties export-ignore
+signing.properties export-ignore
+keystore.properties export-ignore
+sync.settings.json export-ignore
+security.json export-ignore
+adbkey export-ignore
+*.keystore export-ignore
+*.jks export-ignore
+*.p12 export-ignore
+*.pfx export-ignore
+*.pem export-ignore
+*.key export-ignore
+*.log export-ignore
+*.jsonl export-ignore

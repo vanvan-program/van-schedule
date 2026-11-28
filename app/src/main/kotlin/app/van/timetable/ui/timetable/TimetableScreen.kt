@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -70,7 +71,6 @@ fun Timetable(
     val selectedDate = pager.selectedDate
     val dayDate = pager.dayDate
     val gridPan = remember(s.id) { MutableStateFlow(0) }
-    val canCollapseGaps = remember(s) { GridTimeline.canCollapseGaps(s) }
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val dragMetrics = remember(s.id) { GridDragMetrics() }
@@ -158,6 +158,11 @@ fun Timetable(
                     }
                 }
             } else {
+                val autoCollapse = p.showCourseGaps == null && remember(s, p.globalDayOverrides) {
+                    GridTimeline.canCollapseGaps(s, p.globalDayOverrides)
+                }
+                // Adjacent weeks often repeat the same section labels, course names and rooms.
+                val gridTextMeasurer = rememberTextMeasurer(cacheSize = 128)
                 Row(Modifier.weight(1f)) {
                     TimetablePager(
                         pager.weekPager,
@@ -171,9 +176,10 @@ fun Timetable(
                             dateNow,
                             gridPan,
                             pager.weekPager.settledPage == page,
-                            canCollapseGaps,
+                            autoCollapse,
                             nav,
                             now = now,
+                            textMeasurer = gridTextMeasurer,
                             dragMetrics = dragMetrics,
                             dragging = dragging,
                             onDragStart = { occ, fromW, wPx, hPx, finger, grab ->

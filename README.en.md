@@ -22,7 +22,7 @@
 **van-schedule** is a native Android timetable app built with Kotlin, Jetpack Compose, Room, and DataStore, accompanied by an experimental **Xiaomi Vela wearable companion**. Designed to be local-first with zero ads, no account system, and no analytics, it covers everything from multi-format schedule import to drag-and-drop rescheduling, reminders, and home-screen widgets.
 
 > [!TIP]
-> The complete chronological version history (`0.1.5` – `0.5.22`) and validation logs have been moved to **[CHANGELOG.md](CHANGELOG.md)**.
+> The complete chronological version history (`0.1.5` – `0.5.23`) and validation logs have been moved to **[CHANGELOG.md](CHANGELOG.md)**.
 
 ## Key Features
 
